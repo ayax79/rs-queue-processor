@@ -77,7 +77,7 @@ mod tests {
     use rusoto_core::RusotoFuture;
 
     #[test]
-    fn sqs_fetch_messges() {
+    fn sqs_fetch_messages() {
         let docker = clients::Cli::default();
         let node = docker.run(images::elasticmq::ElasticMQ::default());
         let host_port = node.get_host_port(9324).unwrap();
