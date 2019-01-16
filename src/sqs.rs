@@ -1,35 +1,33 @@
 use crate::errors::ProcessorError;
 use crate::model::OurMessage;
 use futures::future::Future;
+use rusoto_core::HttpClient;
 use rusoto_core::Region;
-use rusoto_sqs::{
-    Message, ReceiveMessageRequest, Sqs, SqsClient as RusotoSqsClient,
-};
+use rusoto_credential::StaticProvider;
+use rusoto_sqs::{Message, ReceiveMessageRequest, Sqs, SqsClient as RusotoSqsClient};
 use std::convert::From;
 use std::str::FromStr;
 use std::sync::Arc;
 
+const SQS_LOCAL_REGION: &'static str = "sqs-local";
+
 #[derive(Clone)]
-struct SqsClient {
+pub struct SqsClient {
     queue_url: String,
     sqs: Arc<RusotoSqsClient>,
 }
 
 impl SqsClient {
     pub fn new(region: Region, queue_url: &str) -> Self {
-        let sqs = RusotoSqsClient::new(region);
+        let sqs = build_sqs_client(region);
         SqsClient {
             queue_url: queue_url.to_owned(),
             sqs: Arc::new(sqs),
         }
     }
 
-    #[cfg(test)]
-    pub fn new_with_rusoto_client(rusoto_client: RusotoSqsClient, queue_url: &str) -> Self {
-        SqsClient {
-            queue_url: queue_url.to_owned(),
-            sqs: Arc::new(rusoto_client)
-        }
+    pub fn local(port: u32, queue_url: &str) -> Self {
+        SqsClient::new(build_local_region(port), queue_url)
     }
 
     pub fn fetch_messages(&self) -> impl Future<Item = Vec<OurMessage>, Error = ProcessorError> {
@@ -43,6 +41,21 @@ impl SqsClient {
             .map(|maybe_messages| maybe_messages.unwrap_or_else(|| vec![]))
             .map(|messages| messages_to_our_messages(&messages))
             .map_err(ProcessorError::from)
+    }
+}
+
+fn build_sqs_client(region: Region) -> RusotoSqsClient {
+    match region {
+        Region::Custom {
+            name: _,
+            endpoint: _,
+        } => {
+            let dispatcher = HttpClient::new().expect("could not create http client");
+            let credentials_provider =
+                StaticProvider::new("fakeKey".to_string(), "fakeSecret".to_string(), None, None);
+            RusotoSqsClient::new_with(dispatcher, credentials_provider, region)
+        }
+        _ => RusotoSqsClient::new(region),
     }
 }
 
@@ -64,35 +77,39 @@ fn message_to_our_message(message: &Message) -> Option<OurMessage> {
         .and_then(|b| OurMessage::from_str(b.as_ref()).ok())
 }
 
+fn build_local_region(port: u32) -> Region {
+    Region::Custom {
+        name: SQS_LOCAL_REGION.to_string(),
+        endpoint: format!("http://localhost:{}", port),
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rusoto_core::HttpClient;
-    use testcontainers::{clients, images};
+    use rusoto_core::RusotoFuture;
+    use rusoto_sqs::{CreateQueueRequest, SendMessageRequest};
     use testcontainers::clients::Cli;
     use testcontainers::Docker;
-    use rusoto_sqs::{CreateQueueRequest, SendMessageRequest};
-    use rusoto_credential::StaticProvider;
-    use rusoto_core::RusotoFuture;
+    use testcontainers::{clients, images};
 
     #[test]
     fn sqs_fetch_messages() {
         let docker = clients::Cli::default();
         let node = docker.run(images::elasticmq::ElasticMQ::default());
         let host_port = node.get_host_port(9324).unwrap();
-        let region = build_region(host_port);
+        let region = build_local_region(host_port);
         let rusoto_sqs_client = build_sqs_client(region.clone());
         let queue_url = create_queue(&rusoto_sqs_client, create_queue_request());
         populate_queue(&rusoto_sqs_client, &queue_url);
 
-
-        let client = SqsClient::new_with_rusoto_client(rusoto_sqs_client, queue_url.as_ref());
+        let client = SqsClient::local(host_port, queue_url.as_ref());
 
         client.fetch_messages();
 
-        let result: Vec<OurMessage> =
-            RusotoFuture::from_future(client.fetch_messages()).sync().unwrap();
+        let result: Vec<OurMessage> = RusotoFuture::from_future(client.fetch_messages())
+            .sync()
+            .unwrap();
 
         assert_eq!(1, result.len());
         let our_message: &OurMessage = result.get(0).unwrap();
@@ -107,24 +124,8 @@ mod tests {
         client.send_message(request).sync().unwrap();
     }
 
-    fn build_sqs_client(region: Region) -> RusotoSqsClient {
-        let dispatcher = HttpClient::new().expect("could not create http client");
-        let credentials_provider =
-            StaticProvider::new("fakeKey".to_string(), "fakeSecret".to_string(), None, None);
-        RusotoSqsClient::new_with(dispatcher, credentials_provider, region)
-    }
-
-    fn build_region(host_port: u32) -> Region {
-        Region::Custom {
-            name: "sqs-local".to_string(),
-            endpoint: format!("http://localhost:{}", host_port),
-        }
-    }
-
     fn create_queue(client: &RusotoSqsClient, request: CreateQueueRequest) -> String {
-        let response = client.create_queue(request)
-            .sync()
-            .unwrap();
+        let response = client.create_queue(request).sync().unwrap();
 
         response.queue_url.unwrap()
     }

@@ -1,6 +1,6 @@
-use rusoto_sqs::ReceiveMessageError;
-use rusoto_credential::CredentialsError as RusotoCredentialsError;
 use rusoto_core::request::HttpDispatchError as RusotoHttpDispatchError;
+use rusoto_credential::CredentialsError as RusotoCredentialsError;
+use rusoto_sqs::ReceiveMessageError;
 use serde_json::Error as SerdeJsonError;
 use std::convert::From;
 use std::error::Error;
@@ -11,7 +11,8 @@ pub enum ProcessorError {
     JsonParseError(SerdeJsonError),
     SqsReceiveMessageError(ReceiveMessageError),
     CredentialsError(RusotoCredentialsError),
-    HttpDispatchError(RusotoHttpDispatchError)
+    HttpDispatchError(RusotoHttpDispatchError),
+    CommandLineError(&'static str),
 }
 
 impl<'a> Display for ProcessorError {
@@ -27,6 +28,9 @@ impl<'a> Display for ProcessorError {
             ProcessorError::HttpDispatchError(e) => {
                 write!(f, "An HttpDispatch Error occurred: {:#?}", e)
             }
+            ProcessorError::CommandLineError(e) => {
+                write!(f, "A command line error occurred: {}", e)
+            }
         }
     }
 }
@@ -37,7 +41,8 @@ impl Error for ProcessorError {
             ProcessorError::JsonParseError(ref e) => Some(e),
             ProcessorError::SqsReceiveMessageError(ref e) => Some(e),
             ProcessorError::CredentialsError(ref e) => Some(e),
-            ProcessorError::HttpDispatchError(ref e) => Some(e)
+            ProcessorError::HttpDispatchError(ref e) => Some(e),
+            _ => None,
         }
     }
 }
