@@ -20,7 +20,13 @@ impl<'a> Display for ProcessorError {
         match self {
             ProcessorError::JsonParseError(e) => write!(f, "Error parsing JSON: {:#?}", e),
             ProcessorError::SqsReceiveMessageError(e) => {
-                write!(f, "Error receiving SQS message: {:#?}", e)
+                match e {
+                    ReceiveMessageError::Unknown(be) => {
+                        let message = String::from_utf8_lossy(be.body.as_slice());
+                        write!(f, "Unknown Error receiving SQS message: {:#?}", message)
+                    }
+                    _ => write!(f, "Error receiving SQS message: {:#?}", e)
+                }
             }
             ProcessorError::CredentialsError(e) => {
                 write!(f, "A credentials error occurred: {:#?}", e)

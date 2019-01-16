@@ -1,5 +1,5 @@
 use crate::errors::ProcessorError::{self, CommandLineError};
-use clap::{App, Arg, ArgMatches, SubCommand};
+use clap::{App, Arg, ArgMatches};
 use rusoto_core::Region;
 use std::str::FromStr;
 

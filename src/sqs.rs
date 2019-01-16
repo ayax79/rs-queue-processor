@@ -13,7 +13,7 @@ const SQS_LOCAL_REGION: &'static str = "sqs-local";
 
 #[derive(Clone)]
 pub struct SqsClient {
-    queue_url: String,
+    pub queue_url: String,
     sqs: Arc<RusotoSqsClient>,
 }
 
@@ -74,7 +74,13 @@ fn message_to_our_message(message: &Message) -> Option<OurMessage> {
     message
         .body
         .clone()
-        .and_then(|b| OurMessage::from_str(b.as_ref()).ok())
+        .and_then(|b| {
+            let result = OurMessage::from_str(b.as_ref());
+            if let &Err(ref e) = &result {
+                error!("Error parsing message of {}", &e);
+            }
+            result.ok()
+        })
 }
 
 fn build_local_region(port: u32) -> Region {
@@ -89,7 +95,6 @@ mod tests {
     use super::*;
     use rusoto_core::RusotoFuture;
     use rusoto_sqs::{CreateQueueRequest, SendMessageRequest};
-    use testcontainers::clients::Cli;
     use testcontainers::Docker;
     use testcontainers::{clients, images};
 

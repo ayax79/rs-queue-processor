@@ -1,54 +1,57 @@
 #[macro_use]
 extern crate serde_derive;
 
-//#[macro_use]
-//extern crate log;
+#[macro_use]
+extern crate log;
 
 mod cli;
 mod errors;
 mod model;
 mod sqs;
 
-use crate::errors::ProcessorError::{self, CommandLineError};
-use crate::sqs::SqsClient;
 use crate::cli::{Cli, Mode};
+use crate::sqs::SqsClient;
 use std::time::{Duration, Instant};
-use tokio::prelude::*;
-use tokio::timer::{Interval, Error as TimerError};
 use tokio::executor::DefaultExecutor;
 use tokio::executor::Executor;
-
-use rusoto_core::Region;
+use tokio::prelude::*;
+use tokio::timer::Interval;
+use env_logger;
 
 fn main() {
+    env_logger::init();
+
     match Cli::new().determine_mode() {
         Ok(mode) => {
             let initialized_client = build_sqs_client(&mode);
+            info!("Initializing rs-queue-processor: {:?}", &mode);
 
             let sqs_client = initialized_client.clone();
-            let task = Interval::new(Instant::now(), Duration::from_secs(2))
-                .take(10)
-                .for_each(move |_| {
-                    println!("Timer task is starting");
-                    let f = sqs_client.fetch_messages()
-                        .map(|m| {
-                            println!("Received message: {:#?}", m)
+                let task = Interval::new(Instant::now(), Duration::from_secs(2))
+                    .for_each(move |_| {
+                    debug!("Timer task is starting");
+                    let f = sqs_client
+                        .fetch_messages()
+                        .map(|messages| {
+                            if messages.is_empty() {
+                                debug!("No messages received for queue")
+                            } else {
+                                for m in messages {
+                                    debug!("Received message: {:#?}", m.text)
+                                }
+                            }
                         })
-                        .map_err(|e| {
-                            panic!("An error occurred: {:#?}", e)
+                        .map_err(|e| panic!("An error occurred: {}", e));
 
-                        });
-
-                    DefaultExecutor::current().spawn(Box::new(f));
+                    let _r = DefaultExecutor::current().spawn(Box::new(f));
                     Ok(())
                 })
                 .map_err(|e| panic!("interval error; err={:#?}", e));
 
-            DefaultExecutor::current().spawn(Box::new(task));
+            tokio::run(task);
         }
         Err(e) => {
-            eprintln!("{}", e);
-            std::process::exit(1);
+            panic!("{}", e);
         }
     }
 }
