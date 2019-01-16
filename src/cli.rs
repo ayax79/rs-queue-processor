@@ -20,7 +20,7 @@ pub struct Cli {
 }
 
 impl Cli {
-    fn new() -> Self {
+    pub fn new() -> Self {
         let matches = get_matches();
         Cli {
             maybe_local: matches.value_of("local").map(|s| s.to_owned()),
