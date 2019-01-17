@@ -47,13 +47,17 @@ impl SqsClient {
             .map_err(ProcessorError::from)
     }
 
-    pub fn delete_message(&self, receipt_handle: &str) -> impl Future<Item = (), Error = ProcessorError> {
+    pub fn delete_message(
+        &self,
+        receipt_handle: &str,
+    ) -> impl Future<Item = (), Error = ProcessorError> {
         debug!("delete_message called. receipt_handle: {}", receipt_handle);
         let mut request = DeleteMessageRequest::default();
         request.queue_url = self.queue_url.clone();
         request.receipt_handle = receipt_handle.to_owned();
 
-        self.sqs.delete_message(request)
+        self.sqs
+            .delete_message(request)
             .map(|_| ())
             .map_err(ProcessorError::from)
     }
@@ -142,7 +146,8 @@ mod tests {
         assert_eq!("Hello", workload.text);
 
         let receipt_handle = our_message.receipt_handle.clone().unwrap();
-        let result = RusotoFuture::from_future(client.delete_message(receipt_handle.as_ref())).sync();
+        let result =
+            RusotoFuture::from_future(client.delete_message(receipt_handle.as_ref())).sync();
         assert!(result.is_ok());
     }
 
