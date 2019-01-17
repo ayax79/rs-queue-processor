@@ -76,3 +76,17 @@ impl From<RusotoHttpDispatchError> for ProcessorError {
         ProcessorError::HttpDispatchError(e)
     }
 }
+
+
+#[derive(Debug, Clone)]
+pub struct NoSQSBodyException;
+
+impl Error for NoSQSBodyException {
+
+}
+
+impl<'a> Display for NoSQSBodyException {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "The sqs message did not contain a body")
+    }
+}

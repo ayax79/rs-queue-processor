@@ -24,7 +24,7 @@ fn main() {
     match Cli::new().determine_mode() {
         Ok(mode) => {
             let initialized_client = build_sqs_client(&mode);
-            info!("Initializing rs-queue-processor: {:?}", &mode);
+            println!("Initializing rs-queue-processor: {:?}", &mode);
 
             let sqs_client = initialized_client.clone();
                 let task = Interval::new(Instant::now(), Duration::from_secs(2))
@@ -34,10 +34,14 @@ fn main() {
                         .fetch_messages()
                         .map(|messages| {
                             if messages.is_empty() {
-                                debug!("No messages received for queue")
+                                println!("No messages received for queue")
                             } else {
                                 for m in messages {
-                                    debug!("Received message: {:#?}", m.text)
+                                    if let Some(workload) = m.work_load {
+                                        println!("Received message: {:#?}", workload.text)
+                                    } else {
+                                        println!("Message {} had now workload ", m.message_id.unwrap_or_else(|| "<No ID Found>".to_string()))
+                                    }
                                 }
                             }
                         })
