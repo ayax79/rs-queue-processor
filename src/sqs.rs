@@ -4,7 +4,10 @@ use futures::future::Future;
 use rusoto_core::HttpClient;
 use rusoto_core::Region;
 use rusoto_credential::StaticProvider;
-use rusoto_sqs::{Message as SqsMessage, ReceiveMessageRequest, Sqs, SqsClient as RusotoSqsClient};
+use rusoto_sqs::{
+    DeleteMessageRequest, Message as SqsMessage, ReceiveMessageRequest, Sqs,
+    SqsClient as RusotoSqsClient,
+};
 use std::convert::From;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -31,6 +34,7 @@ impl SqsClient {
     }
 
     pub fn fetch_messages(&self) -> impl Future<Item = Vec<Message>, Error = ProcessorError> {
+        debug!("fetch_messages called");
         let mut request = ReceiveMessageRequest::default();
         request.max_number_of_messages = Some(10);
         request.queue_url = self.queue_url.clone();
@@ -40,6 +44,17 @@ impl SqsClient {
             .map(|result| result.messages)
             .map(|maybe_messages| maybe_messages.unwrap_or_else(|| vec![]))
             .map(|messages| messages_to_our_messages(&messages))
+            .map_err(ProcessorError::from)
+    }
+
+    pub fn delete_message(&self, receipt_handle: &str) -> impl Future<Item = (), Error = ProcessorError> {
+        debug!("delete_message called. receipt_handle: {}", receipt_handle);
+        let mut request = DeleteMessageRequest::default();
+        request.queue_url = self.queue_url.clone();
+        request.receipt_handle = receipt_handle.to_owned();
+
+        self.sqs.delete_message(request)
+            .map(|_| ())
             .map_err(ProcessorError::from)
     }
 }
@@ -60,10 +75,7 @@ fn build_sqs_client(region: Region) -> RusotoSqsClient {
 }
 
 fn messages_to_our_messages(messages: &Vec<SqsMessage>) -> Vec<Message> {
-    messages
-        .iter()
-        .map(message_to_our_message)
-        .collect()
+    messages.iter().map(message_to_our_message).collect()
 }
 
 fn message_to_our_message(message: &SqsMessage) -> Message {
@@ -76,9 +88,19 @@ fn message_to_our_message(message: &SqsMessage) -> Message {
                 error!("Error parsing message of {}", &e);
             }
 
-            Message::new(message.message_id.clone(), result.ok())
+            Message::new(
+                message.receipt_handle.clone(),
+                message.message_id.clone(),
+                result.ok(),
+            )
         })
-        .unwrap_or_else(|| Message::new(message.message_id.clone(), None))
+        .unwrap_or_else(|| {
+            Message::new(
+                message.receipt_handle.clone(),
+                message.message_id.clone(),
+                None,
+            )
+        })
 }
 
 fn build_local_region(port: u32) -> Region {
@@ -118,6 +140,10 @@ mod tests {
         let our_message: &Message = result.get(0).unwrap();
         let workload = our_message.work_load.clone().unwrap();
         assert_eq!("Hello", workload.text);
+
+        let receipt_handle = our_message.receipt_handle.clone().unwrap();
+        let result = RusotoFuture::from_future(client.delete_message(receipt_handle.as_ref())).sync();
+        assert!(result.is_ok());
     }
 
     fn populate_queue(client: &RusotoSqsClient, queue_url: &str) {

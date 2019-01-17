@@ -1,3 +1,4 @@
 #!/bin/sh
 
-RUST_LOG=main=debug cargo run -- --local=9324 --queue="http://localhost:9324/queue/my-messages"
+cargo build 
+RUST_LOG=main=debug ./target/debug/rs-queue-processor --local=9324 --queue="http://localhost:9324/queue/my-messages"

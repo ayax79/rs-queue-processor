@@ -16,17 +16,23 @@ impl FromStr for WorkLoad {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Message {
+    pub receipt_handle: Option<String>,
     pub message_id: Option<String>,
-    pub work_load: Option<WorkLoad>
+    pub work_load: Option<WorkLoad>,
 }
 
 impl Message {
-    pub fn new(message_id: Option<String>, work_load: Option<WorkLoad>) -> Self {
+    pub fn new(
+        receipt_handle: Option<String>,
+        message_id: Option<String>,
+        work_load: Option<WorkLoad>,
+    ) -> Self {
         Message {
+            receipt_handle,
             message_id,
-            work_load
+            work_load,
         }
     }
 }
