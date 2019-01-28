@@ -5,22 +5,26 @@ use serde_json::Error as SerdeJsonError;
 use std::convert::From;
 use std::error::Error;
 use std::fmt::{self, Display};
+use std::ops::Deref;
+use std::sync::Arc;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ProcessorError {
-    JsonParseError(SerdeJsonError),
-    SqsReceiveMessageError(ReceiveMessageError),
-    SqsDeleteMessageError(DeleteMessageError),
-    CredentialsError(RusotoCredentialsError),
-    HttpDispatchError(RusotoHttpDispatchError),
+    JsonParseError(Arc<SerdeJsonError>),
+    SqsReceiveMessageError(Arc<ReceiveMessageError>),
+    SqsDeleteMessageError(Arc<DeleteMessageError>),
+    CredentialsError(Arc<RusotoCredentialsError>),
+    HttpDispatchError(Arc<RusotoHttpDispatchError>),
     CommandLineError(&'static str),
+    WorkErrorOccurred(WorkError),
+    Unknown,
 }
 
 impl<'a> Display for ProcessorError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ProcessorError::JsonParseError(e) => write!(f, "Error parsing JSON: {:#?}", e),
-            ProcessorError::SqsReceiveMessageError(e) => match e {
+            ProcessorError::SqsReceiveMessageError(e) => match e.deref() {
                 ReceiveMessageError::Unknown(be) => {
                     let message = String::from_utf8_lossy(be.body.as_slice());
                     write!(f, "Unknown Error receiving SQS message: {:#?}", message)
@@ -41,6 +45,8 @@ impl<'a> Display for ProcessorError {
             ProcessorError::CommandLineError(e) => {
                 write!(f, "A command line error occurred: {}", e)
             }
+            ProcessorError::Unknown => write!(f, "An unknown error occurred"),
+            ProcessorError::WorkErrorOccurred(e) => write!(f, "A work error occurred: {:#?}", e),
         }
     }
 }
@@ -48,11 +54,12 @@ impl<'a> Display for ProcessorError {
 impl Error for ProcessorError {
     fn source(&self) -> Option<&(Error + 'static)> {
         match *self {
-            ProcessorError::JsonParseError(ref e) => Some(e),
-            ProcessorError::SqsReceiveMessageError(ref e) => Some(e),
-            ProcessorError::CredentialsError(ref e) => Some(e),
-            ProcessorError::HttpDispatchError(ref e) => Some(e),
-            ProcessorError::SqsDeleteMessageError(ref e) => Some(e),
+            ProcessorError::JsonParseError(ref e) => Some(e.as_ref()),
+            ProcessorError::SqsReceiveMessageError(ref e) => Some(e.as_ref()),
+            ProcessorError::CredentialsError(ref e) => Some(e.as_ref()),
+            ProcessorError::HttpDispatchError(ref e) => Some(e.as_ref()),
+            ProcessorError::SqsDeleteMessageError(ref e) => Some(e.as_ref()),
+            ProcessorError::WorkErrorOccurred(ref we) => Some(we),
             _ => None,
         }
     }
@@ -60,41 +67,59 @@ impl Error for ProcessorError {
 
 impl From<SerdeJsonError> for ProcessorError {
     fn from(e: SerdeJsonError) -> Self {
-        ProcessorError::JsonParseError(e)
+        ProcessorError::JsonParseError(Arc::new(e))
     }
 }
 
 impl From<ReceiveMessageError> for ProcessorError {
     fn from(e: ReceiveMessageError) -> Self {
-        ProcessorError::SqsReceiveMessageError(e)
+        ProcessorError::SqsReceiveMessageError(Arc::new(e))
     }
 }
 
 impl From<RusotoCredentialsError> for ProcessorError {
     fn from(e: RusotoCredentialsError) -> Self {
-        ProcessorError::CredentialsError(e)
+        ProcessorError::CredentialsError(Arc::new(e))
     }
 }
 
 impl From<RusotoHttpDispatchError> for ProcessorError {
     fn from(e: RusotoHttpDispatchError) -> Self {
-        ProcessorError::HttpDispatchError(e)
+        ProcessorError::HttpDispatchError(Arc::new(e))
     }
 }
 
 impl From<DeleteMessageError> for ProcessorError {
     fn from(e: DeleteMessageError) -> Self {
-        ProcessorError::SqsDeleteMessageError(e)
+        ProcessorError::SqsDeleteMessageError(Arc::new(e))
     }
 }
+
+impl From<WorkError> for ProcessorError {
+    fn from(e: WorkError) -> Self {
+        ProcessorError::WorkErrorOccurred(e)
+    }
+}
+
+type WorkErrorMessage = String;
 
 #[derive(Debug, Clone)]
-pub struct NoSQSBodyException;
+pub enum WorkError {
+    #[allow(dead_code)]
+    RecoverableError(WorkErrorMessage),
+    #[allow(dead_code)]
+    UnRecoverableError(WorkErrorMessage),
+}
 
-impl Error for NoSQSBodyException {}
-
-impl<'a> Display for NoSQSBodyException {
+impl<'a> Display for WorkError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "The sqs message did not contain a body")
+        match self {
+            WorkError::RecoverableError(msg) => write!(f, "A recoverable error occurred: {}", msg),
+            WorkError::UnRecoverableError(msg) => {
+                write!(f, "A unrecoverable error occurred: {}", msg)
+            }
+        }
     }
 }
+
+impl Error for WorkError {}
