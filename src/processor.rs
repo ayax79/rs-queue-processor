@@ -69,8 +69,8 @@ impl Processor {
         let message = m.clone();
         let delete_clone = m.clone();
         let work_error_clone = m.clone();
-        let sqs_client_or_else = self.sqs_client.clone();
-        let sqs_client_and_then = self.sqs_client.clone();
+        let sqs_client_or_else = self.sqs_client.clone(); // clone for if there was an error processing messages
+        let sqs_client_and_then = self.sqs_client.clone(); // clone for handle_delete
         let worker = self.worker.clone();
         Box::new(
             worker
