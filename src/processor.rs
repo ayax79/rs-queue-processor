@@ -1,4 +1,4 @@
-use crate::config::Mode;
+use crate::config::{Config, Mode};
 use crate::errors::{ProcessorError, WorkError};
 use crate::model::Message;
 use crate::sqs::SqsClient;
@@ -22,9 +22,9 @@ pub struct Processor {
 }
 
 impl Processor {
-    pub fn new(mode: &Mode, worker: Box<ShareableWorker>) -> Result<Self, ProcessorError> {
-        println!("Initializing rs-queue-processor: {:?}", &mode);
-        let sqs_client = build_sqs_client(&mode);
+    pub fn new(config: &Config, worker: Box<ShareableWorker>) -> Result<Self, ProcessorError> {
+        println!("Initializing rs-queue-processor: {:?}", &config.mode);
+        let sqs_client = build_sqs_client(&config.mode);
         Ok(Processor {
             sqs_client,
             worker: Arc::from(worker),

@@ -19,10 +19,10 @@ use env_logger;
 fn main() {
     env_logger::init();
 
-    match Cli::new().determine_mode() {
-        Ok(mode) => {
+    match Cli::new().build_config() {
+        Ok(config) => {
             let worker = WorkerImpl::default();
-            let processor = Processor::new(&mode, Box::new(worker));
+            let processor = Processor::new(&config, Box::new(worker));
             processor.unwrap().process();
         }
         Err(e) => {

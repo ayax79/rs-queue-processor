@@ -1,12 +1,34 @@
 use crate::errors::ProcessorError::{self, CommandLineError};
 use clap::{App, Arg, ArgMatches};
 use rusoto_core::Region;
+use std::default::Default;
 use std::str::FromStr;
+
+const DEFAULT_QUEUE: &'static str = "my-messages";
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Config {
+    pub mode: Mode,
+}
+
+impl Config {
+    fn with_mode(self, mode: Mode) -> Self {
+        Config { mode, ..self }
+    }
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Config {
+            mode: Mode::AWS(Region::UsWest2, DEFAULT_QUEUE.to_owned()),
+        }
+    }
+}
 
 pub type Queue = String;
 pub type Port = u32;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Mode {
     Local(Port, Queue),
     AWS(Region, Queue),
@@ -42,7 +64,12 @@ impl Cli {
         }
     }
 
-    pub fn determine_mode(&self) -> Result<Mode, ProcessorError> {
+    pub fn build_config(&self) -> Result<Config, ProcessorError> {
+        self.determine_mode()
+            .map(|mode| Config::default().with_mode(mode))
+    }
+
+    fn determine_mode(&self) -> Result<Mode, ProcessorError> {
         if let Some(queue) = self.maybe_queue.clone() {
             if let Some(port_string) = self.maybe_local.clone() {
                 port_string
@@ -109,25 +136,25 @@ mod tests {
     #[test]
     fn test_missing_queue() {
         let cli = Cli::new_with(Some("23".to_owned()), Some("uswest2".to_owned()), None);
-        assert!(cli.determine_mode().is_err())
+        assert!(cli.build_config().is_err())
     }
 
     #[test]
     fn test_no_local_or_region() {
         let cli = Cli::new_with(None, None, Some("foo".to_owned()));
-        assert!(cli.determine_mode().is_err())
+        assert!(cli.build_config().is_err())
     }
 
     #[test]
     fn test_bad_local_port() {
         let cli = Cli::new_with(Some("sdf".to_owned()), None, Some("foo".to_owned()));
-        assert!(cli.determine_mode().is_err())
+        assert!(cli.build_config().is_err())
     }
 
     #[test]
     fn test_bad_region() {
         let cli = Cli::new_with(None, Some("usswest2".to_owned()), Some("foo".to_owned()));
-        assert!(cli.determine_mode().is_err())
+        assert!(cli.build_config().is_err())
     }
 
     #[test]
@@ -139,7 +166,7 @@ mod tests {
         );
         assert_eq!(
             Mode::Local(23, "foo".to_owned()),
-            cli.determine_mode().unwrap()
+            cli.build_config().unwrap().mode
         )
     }
 
@@ -148,7 +175,7 @@ mod tests {
         let cli = Cli::new_with(None, Some("uswest2".to_owned()), Some("foo".to_owned()));
         assert_eq!(
             Mode::AWS(Region::UsWest2, "foo".to_owned()),
-            cli.determine_mode().unwrap()
+            cli.build_config().unwrap().mode
         )
     }
 
