@@ -23,7 +23,7 @@ fn main() {
         Ok(config) => {
             let worker = WorkerImpl::default();
             let processor = Processor::new(&config, Box::new(worker));
-            processor.unwrap().process();
+            tokio::run(processor.unwrap().process());
         }
         Err(e) => {
             panic!("{}", e);

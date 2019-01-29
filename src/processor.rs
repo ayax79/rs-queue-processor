@@ -15,6 +15,11 @@ type ProcessorFuture = Future<Item = (), Error = ()> + Send;
 type ProcessorErrorFuture = Future<Item = (), Error = ProcessorError> + Send;
 type ShareableWorker = Worker + Send + Sync;
 
+/// This is the main class for processing messages from an SQS Queue
+///
+/// To instantiate an instance of Processor you will need:
+/// * A configuration object.
+/// * A Worker instance that supports both Send and Sync
 #[derive(Clone)]
 pub struct Processor {
     sqs_client: SqsClient,
@@ -22,6 +27,8 @@ pub struct Processor {
 }
 
 impl Processor {
+
+    /// Instantiates a new instance of the process
     pub fn new(config: &Config, worker: Box<ShareableWorker>) -> Result<Self, ProcessorError> {
         println!("Initializing rs-queue-processor: {:?}", &config.mode);
         let sqs_client = build_sqs_client(&config.mode);
@@ -31,7 +38,13 @@ impl Processor {
         })
     }
 
-    pub fn process(&self) {
+    /// Generates a Interval Task that can be executed
+    ///
+    /// ```rust
+    /// let processor = Processor::new(&config, worker);
+    /// tokio::run(processor.process());
+    /// ```
+    pub fn process(&self) -> Box<ProcessorFuture> {
         // Clone required for the move in for_each. Cloning SqsClient is cheap as the underlying Rusoto client is embedded in an Arc
         let self_clone = self.clone();
         let task = Interval::new(Instant::now(), Duration::from_secs(2))
@@ -42,10 +55,11 @@ impl Processor {
                 Ok(())
             })
             .map_err(|e| panic!("interval error; err={:#?}", e));
-
-        tokio::run(task);
+        Box::new(task)
     }
 
+    /// Returns a future that will fetch messages from
+    /// SQS to be processed
     fn process_messages(&self) -> Box<ProcessorFuture> {
         let self_clone = self.clone();
         Box::new(
@@ -65,6 +79,8 @@ impl Processor {
         )
     }
 
+    /// Returns a future that will process one message
+    /// The message will be passed to the worker.
     fn process_message(&self, m: Message) -> Box<ProcessorFuture> {
         let message = m.clone();
         let delete_clone = m.clone();
