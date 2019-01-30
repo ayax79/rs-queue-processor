@@ -62,10 +62,3 @@ impl FromStr for WorkLoad {
             .map_err(|e| WorkError::UnRecoverableError(format!("Json Error occurred: {:#?}", e)))
     }
 }
-
-#[derive(Debug, Clone)]
-pub struct Message {
-    pub receipt_handle: Option<String>,
-    pub message_id: Option<String>,
-    pub work_load: Option<WorkLoad>,
-}
