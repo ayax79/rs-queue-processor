@@ -1,6 +1,6 @@
 use rusoto_core::request::HttpDispatchError as RusotoHttpDispatchError;
 use rusoto_credential::CredentialsError as RusotoCredentialsError;
-use rusoto_sqs::{DeleteMessageError, ReceiveMessageError};
+use rusoto_sqs::{DeleteMessageError, ReceiveMessageError, SendMessageError};
 use std::convert::From;
 use std::error::Error;
 use std::fmt::{self, Display};
@@ -11,6 +11,7 @@ use std::sync::Arc;
 pub enum ProcessorError {
     SqsReceiveMessageError(Arc<ReceiveMessageError>),
     SqsDeleteMessageError(Arc<DeleteMessageError>),
+    SqsSendMessageError(Arc<SendMessageError>),
     CredentialsError(Arc<RusotoCredentialsError>),
     HttpDispatchError(Arc<RusotoHttpDispatchError>),
     CommandLineError(&'static str),
@@ -44,6 +45,7 @@ impl<'a> Display for ProcessorError {
             }
             ProcessorError::Unknown => write!(f, "An unknown error occurred"),
             ProcessorError::WorkErrorOccurred(e) => write!(f, "A work error occurred: {:#?}", e),
+            ProcessorError::SqsSendMessageError(e) => write!(f, "Error Sending message {:#?}", e),
         }
     }
 }
@@ -56,6 +58,7 @@ impl Error for ProcessorError {
             ProcessorError::HttpDispatchError(ref e) => Some(e.as_ref()),
             ProcessorError::SqsDeleteMessageError(ref e) => Some(e.as_ref()),
             ProcessorError::WorkErrorOccurred(ref we) => Some(we),
+            ProcessorError::SqsSendMessageError(ref e) => Some(e.as_ref()),
             _ => None,
         }
     }
@@ -82,6 +85,12 @@ impl From<RusotoHttpDispatchError> for ProcessorError {
 impl From<DeleteMessageError> for ProcessorError {
     fn from(e: DeleteMessageError) -> Self {
         ProcessorError::SqsDeleteMessageError(Arc::new(e))
+    }
+}
+
+impl From<SendMessageError> for ProcessorError {
+    fn from(e: SendMessageError) -> Self {
+        ProcessorError::SqsSendMessageError(Arc::new(e))
     }
 }
 

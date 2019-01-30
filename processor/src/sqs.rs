@@ -5,7 +5,7 @@ use rusoto_core::Region;
 use rusoto_credential::StaticProvider;
 use rusoto_sqs::{
     DeleteMessageRequest, Message as SqsMessage, ReceiveMessageRequest, Sqs,
-    SqsClient as RusotoSqsClient,
+    SqsClient as RusotoSqsClient, SendMessageRequest,
 };
 use std::convert::From;
 use std::sync::Arc;
@@ -59,15 +59,16 @@ impl SqsClient {
             .map_err(ProcessorError::from)
     }
 
-    //    pub fn requeue(&self, message: Message) -> impl Future<Item = (), Error = ProcessorError> {
-    //        let mut request = SendMessageRequest::default();
-    //        request.queue_url = self.queue_url.to_owned();
-    //        request.message_body = message.
-    //
-    //
-    ////        self.sqs.send_message()
-    //
-    //    }
+       pub fn requeue(&self, message: SqsMessage, delay_seconds: i64) -> impl Future<Item = (), Error = ProcessorError> {
+           let mut request = SendMessageRequest::default();
+           request.queue_url = self.queue_url.to_owned();
+           request.message_body = message.body.unwrap_or("".to_owned());
+           request.delay_seconds = Some(delay_seconds);
+
+           self.sqs.send_message(request)
+               .map(|_| ())
+               .map_err(ProcessorError::from)
+       }
 }
 
 fn build_sqs_client(region: Region) -> RusotoSqsClient {

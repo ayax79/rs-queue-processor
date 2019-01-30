@@ -3,13 +3,17 @@ use crate::errors::{ProcessorError, WorkError};
 use crate::sqs::SqsClient;
 use crate::work::Worker;
 use futures::future::{err, ok};
-use rusoto_sqs::Message as SQSMessage;
+use rusoto_sqs::Message as SqsMessage;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::executor::DefaultExecutor;
 use tokio::executor::Executor;
 use tokio::prelude::*;
 use tokio::timer::Interval;
+
+// todo: make configurable
+/// Default requeue delay in seconds
+const DEFAULT_REQUEUE_DELAY: i64 = 10;
 
 type ProcessorFuture = dyn Future<Item = (), Error = ()> + Send;
 type ProcessorErrorFuture = dyn Future<Item = (), Error = ProcessorError> + Send;
@@ -78,7 +82,7 @@ impl Processor {
 
     /// Returns a future that will process one message
     /// The message will be passed to the worker.
-    fn process_message(&self, m: SQSMessage) -> Box<ProcessorFuture> {
+    fn process_message(&self, m: SqsMessage) -> Box<ProcessorFuture> {
         let message = m.clone();
         let delete_clone = m.clone();
         let work_error_clone = m.clone();
@@ -113,7 +117,7 @@ fn build_sqs_client(mode: &Mode) -> SqsClient {
     }
 }
 
-fn handle_delete(sqs_client: SqsClient, message: SQSMessage) -> Box<ProcessorErrorFuture> {
+fn handle_delete(sqs_client: SqsClient, message: SqsMessage) -> Box<ProcessorErrorFuture> {
     if let Some(receipt_handle) = message.receipt_handle.clone() {
         Box::new(sqs_client.delete_message(receipt_handle.as_ref()))
     } else {
@@ -122,10 +126,14 @@ fn handle_delete(sqs_client: SqsClient, message: SQSMessage) -> Box<ProcessorErr
     }
 }
 
+fn handle_requeue(sqs_client: SqsClient, message: SqsMessage) -> Box<ProcessorErrorFuture> {
+    Box::new(sqs_client.requeue(message, DEFAULT_REQUEUE_DELAY))
+}
+
 fn handle_work_error(
     sqs_client: SqsClient,
     we: WorkError,
-    m: SQSMessage,
+    m: SqsMessage,
 ) -> Box<ProcessorErrorFuture> {
     let delete_clone = m.clone();
     Box::new(match we.clone() {
@@ -134,8 +142,8 @@ fn handle_work_error(
             handle_delete(sqs_client, delete_clone)
         }
         WorkError::RecoverableError(msg) => {
-            error!("Recoverable from error: {} deleting", &msg);
-            handle_delete(sqs_client, delete_clone)
+            error!("Recoverable from error: {} requeing", &msg);
+            handle_requeue(sqs_client, delete_clone)
         }
     })
 }
