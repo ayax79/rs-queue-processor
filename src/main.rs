@@ -6,7 +6,7 @@ extern crate log;
 
 mod config;
 mod errors;
-mod model;
+//mod model;
 mod processor;
 mod sqs;
 mod work;

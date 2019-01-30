@@ -1,5 +1,4 @@
 use crate::errors::ProcessorError;
-use crate::model::{Message, WorkLoad};
 use futures::future::Future;
 use rusoto_core::HttpClient;
 use rusoto_core::Region;
@@ -9,7 +8,6 @@ use rusoto_sqs::{
     SqsClient as RusotoSqsClient,
 };
 use std::convert::From;
-use std::str::FromStr;
 use std::sync::Arc;
 
 const SQS_LOCAL_REGION: &'static str = "sqs-local";
@@ -33,7 +31,7 @@ impl SqsClient {
         SqsClient::new(build_local_region(port), queue_url)
     }
 
-    pub fn fetch_messages(&self) -> impl Future<Item = Vec<Message>, Error = ProcessorError> {
+    pub fn fetch_messages(&self) -> impl Future<Item = Vec<SqsMessage>, Error = ProcessorError> {
         debug!("fetch_messages called");
         let mut request = ReceiveMessageRequest::default();
         request.max_number_of_messages = Some(10);
@@ -43,7 +41,6 @@ impl SqsClient {
             .receive_message(request)
             .map(|result| result.messages)
             .map(|maybe_messages| maybe_messages.unwrap_or_else(|| vec![]))
-            .map(|messages| messages_to_our_messages(&messages))
             .map_err(ProcessorError::from)
     }
 
@@ -61,6 +58,16 @@ impl SqsClient {
             .map(|_| ())
             .map_err(ProcessorError::from)
     }
+
+    //    pub fn requeue(&self, message: Message) -> impl Future<Item = (), Error = ProcessorError> {
+    //        let mut request = SendMessageRequest::default();
+    //        request.queue_url = self.queue_url.to_owned();
+    //        request.message_body = message.
+    //
+    //
+    ////        self.sqs.send_message()
+    //
+    //    }
 }
 
 fn build_sqs_client(region: Region) -> RusotoSqsClient {
@@ -76,35 +83,6 @@ fn build_sqs_client(region: Region) -> RusotoSqsClient {
         }
         _ => RusotoSqsClient::new(region),
     }
-}
-
-fn messages_to_our_messages(messages: &Vec<SqsMessage>) -> Vec<Message> {
-    messages.iter().map(message_to_our_message).collect()
-}
-
-fn message_to_our_message(message: &SqsMessage) -> Message {
-    message
-        .body
-        .clone()
-        .map(|b| {
-            let result = WorkLoad::from_str(b.as_ref());
-            if let &Err(ref e) = &result {
-                error!("Error parsing message of {}", &e);
-            }
-
-            Message::new(
-                message.receipt_handle.clone(),
-                message.message_id.clone(),
-                result.ok(),
-            )
-        })
-        .unwrap_or_else(|| {
-            Message::new(
-                message.receipt_handle.clone(),
-                message.message_id.clone(),
-                None,
-            )
-        })
 }
 
 fn build_local_region(port: u32) -> Region {
@@ -136,14 +114,13 @@ mod tests {
 
         client.fetch_messages();
 
-        let result: Vec<Message> = RusotoFuture::from_future(client.fetch_messages())
+        let result: Vec<SqsMessage> = RusotoFuture::from_future(client.fetch_messages())
             .sync()
             .unwrap();
 
         assert_eq!(1, result.len());
-        let our_message: &Message = result.get(0).unwrap();
-        let workload = our_message.work_load.clone().unwrap();
-        assert_eq!("Hello", workload.text);
+        let our_message: &SqsMessage = result.get(0).unwrap();
+        assert_eq!("{\"text\": \"Hello\"}", our_message.body.clone().unwrap());
 
         let receipt_handle = our_message.receipt_handle.clone().unwrap();
         let result =

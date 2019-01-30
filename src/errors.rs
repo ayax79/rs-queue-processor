@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub enum ProcessorError {
-    JsonParseError(Arc<SerdeJsonError>),
+    JsonError(Arc<SerdeJsonError>),
     SqsReceiveMessageError(Arc<ReceiveMessageError>),
     SqsDeleteMessageError(Arc<DeleteMessageError>),
     CredentialsError(Arc<RusotoCredentialsError>),
@@ -23,7 +23,7 @@ pub enum ProcessorError {
 impl<'a> Display for ProcessorError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ProcessorError::JsonParseError(e) => write!(f, "Error parsing JSON: {:#?}", e),
+            ProcessorError::JsonError(e) => write!(f, "Error parsing JSON: {:#?}", e),
             ProcessorError::SqsReceiveMessageError(e) => match e.deref() {
                 ReceiveMessageError::Unknown(be) => {
                     let message = String::from_utf8_lossy(be.body.as_slice());
@@ -54,7 +54,7 @@ impl<'a> Display for ProcessorError {
 impl Error for ProcessorError {
     fn source(&self) -> Option<&(Error + 'static)> {
         match *self {
-            ProcessorError::JsonParseError(ref e) => Some(e.as_ref()),
+            ProcessorError::JsonError(ref e) => Some(e.as_ref()),
             ProcessorError::SqsReceiveMessageError(ref e) => Some(e.as_ref()),
             ProcessorError::CredentialsError(ref e) => Some(e.as_ref()),
             ProcessorError::HttpDispatchError(ref e) => Some(e.as_ref()),
@@ -67,7 +67,7 @@ impl Error for ProcessorError {
 
 impl From<SerdeJsonError> for ProcessorError {
     fn from(e: SerdeJsonError) -> Self {
-        ProcessorError::JsonParseError(Arc::new(e))
+        ProcessorError::JsonError(Arc::new(e))
     }
 }
 

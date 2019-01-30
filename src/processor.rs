@@ -1,9 +1,9 @@
 use crate::config::{Config, Mode};
 use crate::errors::{ProcessorError, WorkError};
-use crate::model::Message;
 use crate::sqs::SqsClient;
 use crate::work::Worker;
 use futures::future::{err, ok};
+use rusoto_sqs::Message as SQSMessage;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::executor::DefaultExecutor;
@@ -27,7 +27,6 @@ pub struct Processor {
 }
 
 impl Processor {
-
     /// Instantiates a new instance of the process
     pub fn new(config: &Config, worker: Box<ShareableWorker>) -> Result<Self, ProcessorError> {
         println!("Initializing rs-queue-processor: {:?}", &config.mode);
@@ -81,7 +80,7 @@ impl Processor {
 
     /// Returns a future that will process one message
     /// The message will be passed to the worker.
-    fn process_message(&self, m: Message) -> Box<ProcessorFuture> {
+    fn process_message(&self, m: SQSMessage) -> Box<ProcessorFuture> {
         let message = m.clone();
         let delete_clone = m.clone();
         let work_error_clone = m.clone();
@@ -116,7 +115,7 @@ fn build_sqs_client(mode: &Mode) -> SqsClient {
     }
 }
 
-fn handle_delete(sqs_client: SqsClient, message: Message) -> Box<ProcessorErrorFuture> {
+fn handle_delete(sqs_client: SqsClient, message: SQSMessage) -> Box<ProcessorErrorFuture> {
     if let Some(receipt_handle) = message.receipt_handle.clone() {
         Box::new(sqs_client.delete_message(receipt_handle.as_ref()))
     } else {
@@ -128,7 +127,7 @@ fn handle_delete(sqs_client: SqsClient, message: Message) -> Box<ProcessorErrorF
 fn handle_work_error(
     sqs_client: SqsClient,
     we: WorkError,
-    m: Message,
+    m: SQSMessage,
 ) -> Box<ProcessorErrorFuture> {
     let delete_clone = m.clone();
     Box::new(match we.clone() {
