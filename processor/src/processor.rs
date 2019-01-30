@@ -39,10 +39,8 @@ impl Processor {
 
     /// Generates a Interval Task that can be executed
     ///
-    /// ```rust
     /// let processor = Processor::new(&config, worker);
     /// tokio::run(processor.process());
-    /// ```
     pub fn process(&self) -> Box<ProcessorFuture> {
         // Clone required for the move in for_each. Cloning SqsClient is cheap as the underlying Rusoto client is embedded in an Arc
         let self_clone = self.clone();

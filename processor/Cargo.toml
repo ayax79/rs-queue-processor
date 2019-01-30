@@ -1,0 +1,18 @@
+[package]
+name = "rs_queue_processor"
+version = "0.1.1"
+authors = ["Jack Wright <jack.wright@nike.com>"]
+edition = "2018"
+
+[dependencies]
+tokio = "0.1"
+rusoto_core = "0.36"
+rusoto_sqs = "0.36"
+rusoto_credential = "0.15"
+futures = "0.1"
+log = "0.4"
+env_logger = "0.6"
+clap = "2.32"
+
+[dev-dependencies]
+testcontainers = { git = "https://github.com/testcontainers/testcontainers-rs.git" }

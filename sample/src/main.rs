@@ -1,16 +1,30 @@
-use crate::errors::WorkError;
-use futures::future::{result, Future};
-use rusoto_sqs::Message as SqsMessage;
+#[macro_use]
+extern crate serde_derive;
 
-use crate::errors::ProcessorError;
-use serde_json;
-use std::convert::From;
+extern crate log;
+
+use env_logger;
+use futures::future::{result, Future};
+use rs_queue_processor::config::Cli;
+use rs_queue_processor::errors::WorkError;
+use rs_queue_processor::processor::Processor;
+use rs_queue_processor::work::{Worker, WorkerFuture};
+use rusoto_sqs::Message as SqsMessage;
 use std::str::FromStr;
 
-type WorkerFuture = dyn Future<Item = (), Error = WorkError> + Send;
+fn main() {
+    env_logger::init();
 
-pub trait Worker {
-    fn process(&self, message: SqsMessage) -> Box<WorkerFuture>;
+    match Cli::new().build_config() {
+        Ok(config) => {
+            let worker = WorkerImpl::default();
+            let processor = Processor::new(&config, Box::new(worker));
+            tokio::run(processor.unwrap().process());
+        }
+        Err(e) => {
+            panic!("{}", e);
+        }
+    }
 }
 
 #[derive(Clone, Default)]
@@ -41,10 +55,11 @@ pub struct WorkLoad {
 }
 
 impl FromStr for WorkLoad {
-    type Err = ProcessorError;
+    type Err = WorkError;
 
     fn from_str(s: &str) -> Result<Self, <Self as FromStr>::Err> {
-        serde_json::from_str(s).map_err(ProcessorError::from)
+        serde_json::from_str(s)
+            .map_err(|e| WorkError::UnRecoverableError(format!("Json Error occurred: {:#?}", e)))
     }
 }
 
