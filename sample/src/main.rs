@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate serde_derive;
 
-extern crate log;
+
 
 use env_logger;
 use futures::future::{result, Future};

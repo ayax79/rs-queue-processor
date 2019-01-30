@@ -7,7 +7,6 @@ To use this library simply implement the Worker trait:
 use rs_queue_processor::worker::{Worker, WorkerFuture}
 use futures::future::lazy;
 
-
 #[derive(Clone, Default)]
 pub struct WorkerImpl;
 
