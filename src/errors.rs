@@ -52,7 +52,7 @@ impl<'a> Display for ProcessorError {
 }
 
 impl Error for ProcessorError {
-    fn source(&self) -> Option<&(Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             ProcessorError::JsonError(ref e) => Some(e.as_ref()),
             ProcessorError::SqsReceiveMessageError(ref e) => Some(e.as_ref()),

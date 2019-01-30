@@ -7,7 +7,7 @@ use serde_json;
 use std::convert::From;
 use std::str::FromStr;
 
-type WorkerFuture = Future<Item = (), Error = WorkError> + Send;
+type WorkerFuture = dyn Future<Item = (), Error = WorkError> + Send;
 
 pub trait Worker {
     fn process(&self, message: SqsMessage) -> Box<WorkerFuture>;

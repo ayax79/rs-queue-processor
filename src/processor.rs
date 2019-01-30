@@ -11,9 +11,9 @@ use tokio::executor::Executor;
 use tokio::prelude::*;
 use tokio::timer::Interval;
 
-type ProcessorFuture = Future<Item = (), Error = ()> + Send;
-type ProcessorErrorFuture = Future<Item = (), Error = ProcessorError> + Send;
-type ShareableWorker = Worker + Send + Sync;
+type ProcessorFuture = dyn Future<Item = (), Error = ()> + Send;
+type ProcessorErrorFuture = dyn Future<Item = (), Error = ProcessorError> + Send;
+type ShareableWorker = dyn Worker + Send + Sync;
 
 /// This is the main class for processing messages from an SQS Queue
 ///
