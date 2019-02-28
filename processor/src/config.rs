@@ -12,7 +12,7 @@ pub struct Config {
 }
 
 impl Config {
-    fn with_mode(self, mode: Mode) -> Self {
+    pub fn with_mode(self, mode: Mode) -> Self {
         Config { mode, ..self }
     }
 }

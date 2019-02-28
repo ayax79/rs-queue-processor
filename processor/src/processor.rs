@@ -6,10 +6,9 @@ use futures::future::{err, ok};
 use rusoto_sqs::Message as SqsMessage;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::executor::DefaultExecutor;
-use tokio::executor::Executor;
 use tokio::prelude::*;
 use tokio::timer::Interval;
+use tokio::reactor::Handle;
 
 // todo: make configurable
 /// Default requeue delay in seconds
@@ -46,13 +45,14 @@ impl Processor {
     /// let processor = Processor::new(&config, worker);
     /// tokio::run(processor.process());
     pub fn process(&self) -> Box<ProcessorFuture> {
+        println!("process called!!");
         // Clone required for the move in for_each. Cloning SqsClient is cheap as the underlying Rusoto client is embedded in an Arc
         let self_clone = self.clone();
         let task = Interval::new(Instant::now(), Duration::from_secs(2))
             .for_each(move |_| {
-                debug!("Timer task is starting");
+                println!("Timer task is starting");
                 let f = self_clone.process_messages();
-                let _r = DefaultExecutor::current().spawn(f);
+                let _r = tokio::spawn(f);
                 Ok(())
             })
             .map_err(|e| panic!("interval error; err={:#?}", e));
@@ -70,19 +70,21 @@ impl Processor {
                     if messages.is_empty() {
                         println!("No messages received for queue")
                     } else {
+                        println!("Found messages: {:?}", &messages);
                         for m in messages {
                             let f = self_clone.process_message(m);
-                            let _r = DefaultExecutor::current().spawn(f);
+                            let _r = tokio::spawn(f);
                         }
                     }
                 })
-                .map_err(|e| panic!("An error occurred: {}", e)),
+                .map_err(|e| error!("An error occurred: {}", e)),
         )
     }
 
     /// Returns a future that will process one message
     /// The message will be passed to the worker.
     fn process_message(&self, m: SqsMessage) -> Box<ProcessorFuture> {
+        println!("Process message called with: {:?}", &m);
         let message = m.clone();
         let delete_clone = m.clone();
         let work_error_clone = m.clone();

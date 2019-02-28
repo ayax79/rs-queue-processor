@@ -6,7 +6,6 @@ pub type WorkerFuture = dyn Future<Item = (), Error = WorkError> + Send;
 
 /// Trait to implement to create your own Worker implementation
 pub trait Worker {
-
     /// Creates the future for processing a work message
     ///
     /// A WorkError can be returned on failture of message

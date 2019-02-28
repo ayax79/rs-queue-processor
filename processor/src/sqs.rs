@@ -4,8 +4,8 @@ use rusoto_core::HttpClient;
 use rusoto_core::Region;
 use rusoto_credential::StaticProvider;
 use rusoto_sqs::{
-    DeleteMessageRequest, Message as SqsMessage, ReceiveMessageRequest, Sqs,
-    SqsClient as RusotoSqsClient, SendMessageRequest,
+    DeleteMessageRequest, Message as SqsMessage, ReceiveMessageRequest, SendMessageRequest, Sqs,
+    SqsClient as RusotoSqsClient,
 };
 use std::convert::From;
 use std::sync::Arc;
@@ -32,14 +32,17 @@ impl SqsClient {
     }
 
     pub fn fetch_messages(&self) -> impl Future<Item = Vec<SqsMessage>, Error = ProcessorError> {
-        debug!("fetch_messages called");
+        println!("fetch_messages called");
         let mut request = ReceiveMessageRequest::default();
         request.max_number_of_messages = Some(10);
         request.queue_url = self.queue_url.clone();
 
         self.sqs
             .receive_message(request)
-            .map(|result| result.messages)
+            .map(|result| {
+                println!("sqs: received message result: {:?}", &result);
+                result.messages
+            })
             .map(|maybe_messages| maybe_messages.unwrap_or_else(|| vec![]))
             .map_err(ProcessorError::from)
     }
@@ -59,16 +62,21 @@ impl SqsClient {
             .map_err(ProcessorError::from)
     }
 
-       pub fn requeue(&self, message: SqsMessage, delay_seconds: i64) -> impl Future<Item = (), Error = ProcessorError> {
-           let mut request = SendMessageRequest::default();
-           request.queue_url = self.queue_url.to_owned();
-           request.message_body = message.body.unwrap_or("".to_owned());
-           request.delay_seconds = Some(delay_seconds);
+    pub fn requeue(
+        &self,
+        message: SqsMessage,
+        delay_seconds: i64,
+    ) -> impl Future<Item = (), Error = ProcessorError> {
+        let mut request = SendMessageRequest::default();
+        request.queue_url = self.queue_url.to_owned();
+        request.message_body = message.body.unwrap_or("".to_owned());
+        request.delay_seconds = Some(delay_seconds);
 
-           self.sqs.send_message(request)
-               .map(|_| ())
-               .map_err(ProcessorError::from)
-       }
+        self.sqs
+            .send_message(request)
+            .map(|_| ())
+            .map_err(ProcessorError::from)
+    }
 }
 
 fn build_sqs_client(region: Region) -> RusotoSqsClient {
@@ -112,8 +120,6 @@ mod tests {
         populate_queue(&rusoto_sqs_client, &queue_url);
 
         let client = SqsClient::local(host_port, queue_url.as_ref());
-
-        client.fetch_messages();
 
         let result: Vec<SqsMessage> = RusotoFuture::from_future(client.fetch_messages())
             .sync()
