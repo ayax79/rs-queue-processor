@@ -1,5 +1,5 @@
 use crate::errors::ProcessorError;
-use futures::future::Future;
+use futures::future::Future as OldFuture;
 use rusoto_core::HttpClient;
 use rusoto_core::Region;
 use rusoto_credential::StaticProvider;
@@ -8,7 +8,9 @@ use rusoto_sqs::{
     SqsClient as RusotoSqsClient,
 };
 use std::convert::From;
+use std::future::Future as NewFuture;
 use std::sync::Arc;
+use tokio_async_await::compat::forward::IntoAwaitable;
 
 const SQS_LOCAL_REGION: &'static str = "sqs-local";
 
@@ -31,7 +33,9 @@ impl SqsClient {
         SqsClient::new(build_local_region(port), queue_url)
     }
 
-    pub fn fetch_messages(&self) -> impl Future<Item = Vec<SqsMessage>, Error = ProcessorError> {
+    pub fn fetch_messages(
+        &self,
+    ) -> impl NewFuture<Output = Result<Vec<SqsMessage>, ProcessorError>> {
         println!("fetch_messages called");
         let mut request = ReceiveMessageRequest::default();
         request.max_number_of_messages = Some(10);
@@ -45,12 +49,13 @@ impl SqsClient {
             })
             .map(|maybe_messages| maybe_messages.unwrap_or_else(|| vec![]))
             .map_err(ProcessorError::from)
+            .into_awaitable()
     }
 
     pub fn delete_message(
         &self,
         receipt_handle: &str,
-    ) -> impl Future<Item = (), Error = ProcessorError> {
+    ) -> impl NewFuture<Output = Result<(), ProcessorError>> {
         debug!("delete_message called. receipt_handle: {}", receipt_handle);
         let mut request = DeleteMessageRequest::default();
         request.queue_url = self.queue_url.clone();
@@ -60,13 +65,14 @@ impl SqsClient {
             .delete_message(request)
             .map(|_| ())
             .map_err(ProcessorError::from)
+            .into_awaitable()
     }
 
     pub fn requeue(
         &self,
         message: SqsMessage,
         delay_seconds: i64,
-    ) -> impl Future<Item = (), Error = ProcessorError> {
+    ) -> impl NewFuture<Output = Result<(), ProcessorError>> {
         let mut request = SendMessageRequest::default();
         request.queue_url = self.queue_url.to_owned();
         request.message_body = message.body.unwrap_or("".to_owned());
@@ -76,6 +82,7 @@ impl SqsClient {
             .send_message(request)
             .map(|_| ())
             .map_err(ProcessorError::from)
+            .into_awaitable()
     }
 }
 
@@ -108,31 +115,33 @@ mod tests {
     use rusoto_sqs::{CreateQueueRequest, SendMessageRequest};
     use testcontainers::Docker;
     use testcontainers::{clients, images};
+    //    use futures::executor::block_on;
 
     #[test]
     fn sqs_fetch_messages() {
-        let docker = clients::Cli::default();
-        let node = docker.run(images::elasticmq::ElasticMQ::default());
-        let host_port = node.get_host_port(9324).unwrap();
-        let region = build_local_region(host_port);
-        let rusoto_sqs_client = build_sqs_client(region.clone());
-        let queue_url = create_queue(&rusoto_sqs_client, create_queue_request());
-        populate_queue(&rusoto_sqs_client, &queue_url);
+        tokio::run_async(
+            async {
+                let docker = clients::Cli::default();
+                let node = docker.run(images::elasticmq::ElasticMQ::default());
+                let host_port = node.get_host_port(9324).unwrap();
+                let region = build_local_region(host_port);
+                let rusoto_sqs_client = build_sqs_client(region.clone());
+                let queue_url = create_queue(&rusoto_sqs_client, create_queue_request());
+                populate_queue(&rusoto_sqs_client, &queue_url);
 
-        let client = SqsClient::local(host_port, queue_url.as_ref());
+                let client = SqsClient::local(host_port, queue_url.as_ref());
 
-        let result: Vec<SqsMessage> = RusotoFuture::from_future(client.fetch_messages())
-            .sync()
-            .unwrap();
+                let result: Vec<SqsMessage> = await!(client.fetch_messages()).unwrap();
 
-        assert_eq!(1, result.len());
-        let our_message: &SqsMessage = result.get(0).unwrap();
-        assert_eq!("{\"text\": \"Hello\"}", our_message.body.clone().unwrap());
+                assert_eq!(1, result.len());
+                let our_message: &SqsMessage = result.get(0).unwrap();
+                assert_eq!("{\"text\": \"Hello\"}", our_message.body.clone().unwrap());
 
-        let receipt_handle = our_message.receipt_handle.clone().unwrap();
-        let result =
-            RusotoFuture::from_future(client.delete_message(receipt_handle.as_ref())).sync();
-        assert!(result.is_ok());
+                let receipt_handle = our_message.receipt_handle.clone().unwrap();
+                let result = await!(client.delete_message(receipt_handle.as_ref()));
+                assert!(result.is_ok());
+            },
+        );
     }
 
     fn populate_queue(client: &RusotoSqsClient, queue_url: &str) {

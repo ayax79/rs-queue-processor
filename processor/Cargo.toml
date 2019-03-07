@@ -1,11 +1,13 @@
 [package]
 name = "rs_queue_processor"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["Jack Wright <jack.wright@nike.com>"]
 edition = "2018"
 
 [dependencies]
-tokio = "0.1"
+tokio = {version = "0.1", features = ["async-await-preview"]}
+tokio-async-await = "0.1"
+tokio-process = "0.2.3"
 rusoto_core = "0.36"
 rusoto_sqs = "0.36"
 rusoto_credential = "0.15"
