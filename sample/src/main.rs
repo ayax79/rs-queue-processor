@@ -17,13 +17,8 @@ fn main() {
     match Cli::new().build_config() {
         Ok(config) => {
             let worker = WorkerImpl::default();
-            let processor = Processor::new(&config, Box::new(worker)).unwrap();
-            tokio::run_async(
-                async move {
-                    let f = processor.process();
-                    await!(f).unwrap();
-                },
-            );
+            let mut processor = Processor::new(&config, Box::new(worker)).unwrap();
+            processor.start();
         }
         Err(e) => {
             panic!("{}", e);

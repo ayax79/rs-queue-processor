@@ -4,19 +4,16 @@ use crate::sqs::SqsClient;
 use crate::work::Worker;
 use futures::future::Future as OldFuture;
 use rusoto_sqs::Message as SqsMessage;
-use std::future::Future as NewFuture;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::prelude::*;
 use tokio::timer::Interval;
-use tokio_async_await::compat::forward::IntoAwaitable;
+use tokio::runtime::Runtime;
 
 // todo: make configurable
 /// Default requeue delay in seconds
 const DEFAULT_REQUEUE_DELAY: i64 = 10;
 
-// type ProcessorFuture = dyn Future<Item = (), Error = ()> + Send;
-// type ProcessorErrorFuture = dyn Future<Item = (), Error = ProcessorError> + Send;
 type ShareableWorker = dyn Worker + Send + Sync;
 
 /// This is the main class for processing messages from an SQS Queue
@@ -24,8 +21,13 @@ type ShareableWorker = dyn Worker + Send + Sync;
 /// To instantiate an instance of Processor you will need:
 /// * A configuration object.
 /// * A Worker instance that supports both Send and Sync
-#[derive(Clone)]
 pub struct Processor {
+    inner: ProcessorInner,
+    runtime: Runtime
+}
+
+#[derive(Clone)]
+struct ProcessorInner {
     sqs_client: SqsClient,
     worker: Arc<ShareableWorker>,
 }
@@ -35,21 +37,40 @@ impl Processor {
     pub fn new(config: &Config, worker: Box<ShareableWorker>) -> Result<Self, ProcessorError> {
         println!("Initializing rs-queue-processor: {:?}", &config.mode);
         let sqs_client = build_sqs_client(&config.mode);
-        Ok(Processor {
+        let runtime = Runtime::new().map_err(|_| ProcessorError::Unknown)?; //todo change
+        let inner = ProcessorInner {
             sqs_client,
             worker: Arc::from(worker),
+        };
+        Ok(Processor {
+            inner,
+            runtime
         })
     }
+
+    pub fn start(&mut self) {
+        self.runtime.spawn(self.inner.process());
+    }
+
+    pub fn stop(self) -> Result<(),()> {
+        self.runtime.shutdown_now().wait()
+    }
+}
+
+type ProcessorFuture = dyn Future<Item = (), Error = ()> + Send;
+
+impl ProcessorInner {
+
 
     /// Generates a Interval Task that can be executed
     ///
     /// let processor = Processor::new(&config, worker);
     /// tokio::run(processor.process());
-    pub fn process(&self) -> impl NewFuture<Output = Result<(), ()>> + '_ {
+    fn process(&self) -> Box<ProcessorFuture> {
         println!("process called!!");
         // Clone required for the move in for_each. Cloning SqsClient is cheap as the underlying Rusoto client is embedded in an Arc
         let self_clone = self.clone();
-        Interval::new(Instant::now(), Duration::from_secs(2))
+        let f = Interval::new(Instant::now(), Duration::from_secs(2))
             .for_each(move |_| {
                 println!("Timer task is starting");
                 let clone_2 = self_clone.clone();
@@ -60,8 +81,8 @@ impl Processor {
                 );
                 Ok(())
             })
-            .map_err(|e| panic!("interval error; err={:#?}", e))
-            .into_awaitable()
+            .map_err(|e| panic!("interval error; err={:#?}", e));
+        Box::new(f)
     }
 
     /// Returns a future that will fetch messages from
