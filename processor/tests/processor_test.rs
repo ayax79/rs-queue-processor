@@ -4,12 +4,11 @@ extern crate rs_queue_processor;
 extern crate serde_derive;
 extern crate serde_json;
 
-use futures::future::{lazy, result, Future};
+use futures::future::{result, Future};
 use rs_queue_processor::config::{Config, Mode};
 use rs_queue_processor::errors::WorkError;
-use rs_queue_processor::processor::Processor;
 use rs_queue_processor::work::Worker;
-use rusoto_core::{Region, RusotoFuture};
+use rusoto_core::Region;
 use rusoto_sqs::{
     CreateQueueRequest, Message, SendMessageRequest, Sqs, SqsClient as RusotoSqsClient,
 };
@@ -18,8 +17,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use testcontainers::images::elasticmq::ElasticMQ;
 use testcontainers::{clients, Docker};
-use tokio::executor::DefaultExecutor;
-use tokio::executor::Executor;
 use tokio::runtime::Runtime;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]

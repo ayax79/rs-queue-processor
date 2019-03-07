@@ -111,7 +111,6 @@ fn build_local_region(port: u32) -> Region {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rusoto_core::RusotoFuture;
     use rusoto_sqs::{CreateQueueRequest, SendMessageRequest};
     use testcontainers::Docker;
     use testcontainers::{clients, images};

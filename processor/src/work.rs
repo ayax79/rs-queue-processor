@@ -1,6 +1,5 @@
 use crate::errors::WorkError;
 use rusoto_sqs::Message as SqsMessage;
-use std::future::Future as NewFuture;
 
 /// Trait to implement to create your own Worker implementation
 pub trait Worker {

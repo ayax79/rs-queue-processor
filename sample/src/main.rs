@@ -4,7 +4,6 @@
 extern crate serde_derive;
 
 use env_logger;
-use futures::future::{result, Future};
 use rs_queue_processor::config::Cli;
 use rs_queue_processor::errors::WorkError;
 use rs_queue_processor::processor::Processor;

@@ -2,14 +2,13 @@ use crate::config::{Config, Mode};
 use crate::errors::{ProcessorError, WorkError};
 use crate::sqs::SqsClient;
 use crate::work::Worker;
-use futures::future::{err, ok, Future as OldFuture};
+use futures::future::Future as OldFuture;
 use rusoto_sqs::Message as SqsMessage;
 use std::future::Future as NewFuture;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::prelude::*;
 use tokio::timer::Interval;
-use tokio_async_await::compat::backward;
 use tokio_async_await::compat::forward::IntoAwaitable;
 
 // todo: make configurable
