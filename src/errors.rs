@@ -4,9 +4,9 @@ use rusoto_sqs::{DeleteMessageError, ReceiveMessageError, SendMessageError};
 use std::convert::From;
 use std::error::Error;
 use std::fmt::{self, Display};
+use std::io::Error as IOError;
 use std::ops::Deref;
 use std::sync::Arc;
-use std::io::Error as IOError;
 
 #[derive(Debug, Clone)]
 pub enum ProcessorError {
@@ -24,9 +24,7 @@ pub enum ProcessorError {
 impl<'a> Display for ProcessorError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ProcessorError::IOError(e) => {
-                write!(f, "An std::io::Error occurred: {}", e)
-            }
+            ProcessorError::IOError(e) => write!(f, "An std::io::Error occurred: {}", e),
             ProcessorError::SqsReceiveMessageError(e) => match e.deref() {
                 ReceiveMessageError::Unknown(be) => {
                     let message = String::from_utf8_lossy(be.body.as_slice());
@@ -39,9 +37,7 @@ impl<'a> Display for ProcessorError {
                 "An error occurred when attempted to delete a message {}",
                 e
             ),
-            ProcessorError::CredentialsError(e) => {
-                write!(f, "A credentials error occurred: {}", e)
-            }
+            ProcessorError::CredentialsError(e) => write!(f, "A credentials error occurred: {}", e),
             ProcessorError::HttpDispatchError(e) => {
                 write!(f, "An HttpDispatch Error occurred: {}", e)
             }

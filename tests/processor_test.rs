@@ -8,6 +8,7 @@ extern crate serde_json;
 
 use rs_queue_processor::config::{Config, Mode};
 use rs_queue_processor::errors::WorkError;
+use rs_queue_processor::processor::Processor;
 use rs_queue_processor::work::Worker;
 use rusoto_core::Region;
 use rusoto_sqs::{
@@ -18,8 +19,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use testcontainers::images::elasticmq::ElasticMQ;
 use testcontainers::{clients, Docker};
-use rs_queue_processor::processor::Processor;
-
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 enum Action {
@@ -108,7 +107,8 @@ fn send_message(
     let mut request = SendMessageRequest::default();
     request.queue_url = queue_url.to_owned();
     request.message_body = json;
-    client.send_message(request)
+    client
+        .send_message(request)
         .sync()
         .map(|result| {
             println!("send message result: {:?}", &result);
@@ -125,7 +125,8 @@ fn create_queue(client: Arc<RusotoSqsClient>, queue_name: String) -> Result<Stri
     let mut request = CreateQueueRequest::default();
     request.queue_name = queue_name;
 
-    client.create_queue(request)
+    client
+        .create_queue(request)
         .sync()
         .map(|result| {
             println!("create_queue result: {:?}", &result);

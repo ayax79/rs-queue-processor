@@ -7,8 +7,8 @@ use rusoto_sqs::Message as SqsMessage;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::prelude::*;
+use tokio::runtime::{Builder, Runtime};
 use tokio::timer::Interval;
-use tokio::runtime::{Runtime, Builder};
 
 // todo: make configurable
 /// Default requeue delay in seconds
@@ -23,7 +23,7 @@ type ShareableWorker = dyn Worker + Send + Sync;
 /// * A Worker instance that supports both Send and Sync
 pub struct Processor {
     inner: ProcessorInner,
-    runtime: Runtime
+    runtime: Runtime,
 }
 
 #[derive(Clone)]
@@ -45,23 +45,20 @@ impl Processor {
             .name_prefix("rs-queue-processor-")
             .stack_size(3 * 1024 * 1024)
             .build()
-            .map_err(ProcessorError::from)?; 
+            .map_err(ProcessorError::from)?;
 
         let inner = ProcessorInner {
             sqs_client,
             worker: Arc::from(worker),
         };
-        Ok(Processor {
-            inner,
-            runtime
-        })
+        Ok(Processor { inner, runtime })
     }
 
     pub fn start(&mut self) {
         self.runtime.spawn(self.inner.process());
     }
 
-    pub fn stop(self) -> Result<(),()> {
+    pub fn stop(self) -> Result<(), ()> {
         self.runtime.shutdown_now().wait()
     }
 }
@@ -72,7 +69,6 @@ type ProcessorFuture = dyn Future<Item = (), Error = ()> + Send;
 // ProcessorInner is cloned many times throughout to provide various threads with a copy
 // of the sqs client and worker
 impl ProcessorInner {
-
     /// Generates a Interval Task that can be executed
     ///
     /// let processor = Processor::new(&config, worker);
@@ -125,9 +121,7 @@ impl ProcessorInner {
         let sqs_client_or_else = self.sqs_client.clone(); // clone for if there was an error processing messages
         let sqs_client_and_then = self.sqs_client.clone(); // clone for handle_delete
         let worker = self.worker.clone();
-        let worker_future = async {
-            worker.process(message)
-        };
+        let worker_future = async { worker.process(message) };
 
         if let Err(e) = await!(worker_future) {
             trace!("Received work error: {:?}", &e);
@@ -139,10 +133,8 @@ impl ProcessorInner {
         } else {
             await!(handle_delete(sqs_client_and_then, delete_clone))
         }
-
     }
 }
-
 
 fn build_sqs_client(mode: &Mode) -> SqsClient {
     match mode {
