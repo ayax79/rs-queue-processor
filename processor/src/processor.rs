@@ -8,7 +8,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::prelude::*;
 use tokio::timer::Interval;
-use tokio::runtime::Runtime;
+use tokio::runtime::{Runtime, Builder};
+use futures::future::lazy;
+//use tokio_timer::clock::Clock;
 
 // todo: make configurable
 /// Default requeue delay in seconds
@@ -35,9 +37,18 @@ struct ProcessorInner {
 impl Processor {
     /// Instantiates a new instance of the process
     pub fn new(config: &Config, worker: Box<ShareableWorker>) -> Result<Self, ProcessorError> {
-        println!("Initializing rs-queue-processor: {:?}", &config.mode);
+        info!("Initializing rs-queue-processor: {:?}", &config.mode);
         let sqs_client = build_sqs_client(&config.mode);
-        let runtime = Runtime::new().map_err(|_| ProcessorError::Unknown)?; //todo change
+
+        let runtime = Builder::new()
+            .blocking_threads(4)
+            .core_threads(4)
+            .keep_alive(Some(Duration::from_secs(60)))
+            .name_prefix("rs-queue-processor-")
+            .stack_size(3 * 1024 * 1024)
+            .build()
+            .map_err(ProcessorError::from)?; 
+
         let inner = ProcessorInner {
             sqs_client,
             worker: Arc::from(worker),
@@ -49,6 +60,10 @@ impl Processor {
     }
 
     pub fn start(&mut self) {
+        self.runtime.spawn(lazy(|| {
+            println!("Does this actually work?!?");
+            Ok(())
+        }));
         self.runtime.spawn(self.inner.process());
     }
 
@@ -67,12 +82,12 @@ impl ProcessorInner {
     /// let processor = Processor::new(&config, worker);
     /// tokio::run(processor.process());
     fn process(&self) -> Box<ProcessorFuture> {
-        println!("process called!!");
+        trace!("process called!!");
         // Clone required for the move in for_each. Cloning SqsClient is cheap as the underlying Rusoto client is embedded in an Arc
         let self_clone = self.clone();
-        let f = Interval::new(Instant::now(), Duration::from_secs(2))
-            .for_each(move |_| {
-                println!("Timer task is starting");
+        let f = Interval::new(Instant::now(), Duration::from_millis(100))
+            .for_each(move |instant| {
+                trace!("Timer task is starting: instant {:?}", &instant);
                 let clone_2 = self_clone.clone();
                 let _r = tokio::spawn_async(
                     async move {
@@ -88,32 +103,38 @@ impl ProcessorInner {
     /// Returns a future that will fetch messages from
     /// SQS to be processed
     async fn process_messages(&self) {
+        trace!("process_messages called!");
         match await!(self.sqs_client.fetch_messages()) {
             Ok(messages) => {
+                println!("fetch messages result: {:?}", &messages);
                 for message in messages {
+                    println!("process_messages: handling {:?}", &message);
                     let result = await!(self.process_message(message.clone()));
                     if let Err(e) = result {
-                        error!("Error processing message: {:?} error: {:?}", &message, &e);
+                        error!("Error processing message: {:?} error: {}", &message, &e);
                     }
                 }
             }
-            Err(err) => error!("Error fetching messages: {:?}", err),
+            Err(err) => error!("Error fetching messages: {}", err),
         }
     }
 
     /// Returns a future that will process one message
     /// The message will be passed to the worker.
     async fn process_message(&self, m: SqsMessage) -> Result<(), ProcessorError> {
-        println!("Process message called with: {:?}", &m);
+        debug!("Process message called with: {:?}", &m);
         let message = m.clone();
         let delete_clone = m.clone();
         let work_error_clone = m.clone();
         let sqs_client_or_else = self.sqs_client.clone(); // clone for if there was an error processing messages
         let sqs_client_and_then = self.sqs_client.clone(); // clone for handle_delete
         let worker = self.worker.clone();
-        let worker_future = async { worker.process(message) };
+        let worker_future = async {
+            worker.process(message)
+        };
 
         if let Err(e) = await!(worker_future) {
+            trace!("Received work error: {:?}", &e);
             await!(handle_work_error(
                 sqs_client_or_else,
                 e.clone(),
@@ -123,27 +144,9 @@ impl ProcessorInner {
             await!(handle_delete(sqs_client_and_then, delete_clone))
         }
 
-        // await!(worker.process(message))
-        //     .map_err(ProcessorError::from)
-        //     .or_else(|ref pe| {
-        //         async {
-        //             if let ProcessorError::WorkErrorOccurred(we) = pe.clone() {
-        //                 await!(handle_work_error(sqs_client_or_else, we.clone(), work_error_clone))
-        //             } else {
-        //                 Box::new(Err(ProcessorError::Unknown))
-        //             }
-        //         }
-        //     })
-        //     .and_then(|_f| async {
-        //         await!(handle_delete(sqs_client_and_then, delete_clone)
-        //     })
-        //     .map_err(|e| error!("Error occurred: {}", e))
     }
 }
 
-// fn processor_error_future(pe: ProcessorError) -> Box<ProcessorErrorFuture> {
-//     Box::new(err(pe))
-// }
 
 fn build_sqs_client(mode: &Mode) -> SqsClient {
     match mode {

@@ -25,13 +25,13 @@ impl Default for Config {
     }
 }
 
-pub type Queue = String;
+pub type QueueURL = String;
 pub type Port = u32;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Mode {
-    Local(Port, Queue),
-    AWS(Region, Queue),
+    Local(Port, QueueURL),
+    AWS(Region, QueueURL),
 }
 
 #[derive(Debug)]

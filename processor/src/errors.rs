@@ -6,9 +6,11 @@ use std::error::Error;
 use std::fmt::{self, Display};
 use std::ops::Deref;
 use std::sync::Arc;
+use std::io::Error as IOError;
 
 #[derive(Debug, Clone)]
 pub enum ProcessorError {
+    IOError(Arc<IOError>),
     SqsReceiveMessageError(Arc<ReceiveMessageError>),
     SqsDeleteMessageError(Arc<DeleteMessageError>),
     SqsSendMessageError(Arc<SendMessageError>),
@@ -22,30 +24,33 @@ pub enum ProcessorError {
 impl<'a> Display for ProcessorError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            ProcessorError::IOError(e) => {
+                write!(f, "An std::io::Error occurred: {}", e)
+            }
             ProcessorError::SqsReceiveMessageError(e) => match e.deref() {
                 ReceiveMessageError::Unknown(be) => {
                     let message = String::from_utf8_lossy(be.body.as_slice());
                     write!(f, "Unknown Error receiving SQS message: {:#?}", message)
                 }
-                _ => write!(f, "Error receiving SQS message: {:#?}", e),
+                _ => write!(f, "Error receiving SQS message: {}", e),
             },
             ProcessorError::SqsDeleteMessageError(e) => write!(
                 f,
-                "An error occurred when attempted to delete a message {:#?}",
+                "An error occurred when attempted to delete a message {}",
                 e
             ),
             ProcessorError::CredentialsError(e) => {
-                write!(f, "A credentials error occurred: {:#?}", e)
+                write!(f, "A credentials error occurred: {}", e)
             }
             ProcessorError::HttpDispatchError(e) => {
-                write!(f, "An HttpDispatch Error occurred: {:#?}", e)
+                write!(f, "An HttpDispatch Error occurred: {}", e)
             }
             ProcessorError::CommandLineError(e) => {
                 write!(f, "A command line error occurred: {}", e)
             }
             ProcessorError::Unknown => write!(f, "An unknown error occurred"),
-            ProcessorError::WorkErrorOccurred(e) => write!(f, "A work error occurred: {:#?}", e),
-            ProcessorError::SqsSendMessageError(e) => write!(f, "Error Sending message {:#?}", e),
+            ProcessorError::WorkErrorOccurred(e) => write!(f, "A work error occurred: {}", e),
+            ProcessorError::SqsSendMessageError(e) => write!(f, "Error Sending message {}", e),
         }
     }
 }
@@ -53,6 +58,7 @@ impl<'a> Display for ProcessorError {
 impl Error for ProcessorError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
+            ProcessorError::IOError(ref e) => Some(e.as_ref()),
             ProcessorError::SqsReceiveMessageError(ref e) => Some(e.as_ref()),
             ProcessorError::CredentialsError(ref e) => Some(e.as_ref()),
             ProcessorError::HttpDispatchError(ref e) => Some(e.as_ref()),
@@ -61,6 +67,12 @@ impl Error for ProcessorError {
             ProcessorError::SqsSendMessageError(ref e) => Some(e.as_ref()),
             _ => None,
         }
+    }
+}
+
+impl From<IOError> for ProcessorError {
+    fn from(e: IOError) -> Self {
+        ProcessorError::IOError(Arc::new(e))
     }
 }
 

@@ -36,7 +36,7 @@ impl SqsClient {
     pub fn fetch_messages(
         &self,
     ) -> impl NewFuture<Output = Result<Vec<SqsMessage>, ProcessorError>> {
-        println!("fetch_messages called");
+        trace!("fetch_messages called");
         let mut request = ReceiveMessageRequest::default();
         request.max_number_of_messages = Some(10);
         request.queue_url = self.queue_url.clone();
@@ -44,7 +44,7 @@ impl SqsClient {
         self.sqs
             .receive_message(request)
             .map(|result| {
-                println!("sqs: received message result: {:?}", &result);
+                debug!("sqs: received message result: {:?}", &result);
                 result.messages
             })
             .map(|maybe_messages| maybe_messages.unwrap_or_else(|| vec![]))

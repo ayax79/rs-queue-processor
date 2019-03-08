@@ -19,7 +19,7 @@ use std::time::{Duration, Instant};
 use testcontainers::images::elasticmq::ElasticMQ;
 use testcontainers::{clients, Docker};
 use rs_queue_processor::processor::Processor;
-use tokio_async_await::compat::forward::IntoAwaitable;
+use std::thread::sleep;
 
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
@@ -96,7 +96,7 @@ fn build_sqs_client(port: u32) -> Arc<RusotoSqsClient> {
     Arc::new(RusotoSqsClient::new(build_local_region(port)))
 }
 
-async fn send_message(
+fn send_message(
     client: Arc<RusotoSqsClient>,
     queue_url: String,
     payload: Payload,
@@ -109,8 +109,8 @@ async fn send_message(
     let mut request = SendMessageRequest::default();
     request.queue_url = queue_url.to_owned();
     request.message_body = json;
-
-    await!(client.send_message(request).into_awaitable())
+    client.send_message(request)
+        .sync()
         .map(|result| {
             println!("send message result: {:?}", &result);
             ()
@@ -119,18 +119,15 @@ async fn send_message(
             eprintln!("Could not send message: {:?}", e);
             format!("send_message error: {:?}", e)
         })
-
 }
 
-async fn create_queue(
-    client: Arc<RusotoSqsClient>,
-    queue_name: String,
-) -> Result<String, ()> {
+fn create_queue(client: Arc<RusotoSqsClient>, queue_name: String) -> Result<String, ()> {
     println!("create_queue called!");
     let mut request = CreateQueueRequest::default();
     request.queue_name = queue_name;
 
-    await!(client.create_queue(request).into_awaitable())
+    client.create_queue(request)
+        .sync()
         .map(|result| {
             println!("create_queue result: {:?}", &result);
             result.queue_url.unwrap()
@@ -139,52 +136,44 @@ async fn create_queue(
 }
 
 #[test]
-#[ignore]
 fn test_success() {
     println!("Beginning test_success");
     let payload = Payload::new("my message", Action::Success);
     let payload_for_spawn = payload.clone();
 
     let (tx, rx) = mpsc::sync_channel::<Payload>(1);
-    tokio::run_async(async move {
-        println!("Creating Channel");
+    println!("Creating Channel");
 
-        let queue_name = "test-queue";
-        let docker = clients::Cli::default();
-        let node = docker.run(ElasticMQ::default());
-        let host_port = node.get_host_port(9324).unwrap();
-        let region = build_local_region(host_port);
-        let config = Config::default().with_mode(Mode::AWS(region, queue_name.to_owned()));
-        let sqs_client = build_sqs_client(host_port);
+    let queue_name = "test-queue";
+    let docker = clients::Cli::default();
+    let node = docker.run(ElasticMQ::default());
+    let host_port = node.get_host_port(9324).unwrap();
+    let region = build_local_region(host_port);
+    let sqs_client = build_sqs_client(host_port);
 
-        let sqs_client_for_spawn = Arc::clone(&sqs_client);
+    let sqs_client_for_spawn = Arc::clone(&sqs_client);
 
-        println!("Creating queue");
+    println!("Creating queue");
 
-        let sm_clone_sqs_client = Arc::clone(&sqs_client_for_spawn);
+    let sm_clone_sqs_client = Arc::clone(&sqs_client_for_spawn);
 
-        let queue_url = await!(create_queue(Arc::clone(&sqs_client_for_spawn), queue_name.to_owned()))
-            .unwrap();
+    let queue_url = create_queue(Arc::clone(&sqs_client_for_spawn), queue_name.to_owned()).unwrap();
+    let config = Config::default().with_mode(Mode::AWS(region, queue_url.to_owned()));
 
-        println!("Queue successfully created: {:?}", &queue_url);
-        let worker = TestWorker::new(tx);
-        let mut processor = Processor::new(&config, Box::new(worker)).unwrap();
+    println!("Queue successfully created: {:?}", &queue_url);
+    let worker = TestWorker::new(tx);
 
-        processor.start();
+    send_message(sm_clone_sqs_client, queue_url, payload_for_spawn).unwrap();
 
-        await!(send_message(sm_clone_sqs_client, queue_url, payload_for_spawn))
-            .map_err(|e| {
-                panic!("error sending message: {:?}", e)
-            }).unwrap();
+    let mut processor = Processor::new(&config, Box::new(worker)).unwrap();
+    processor.start();
 
-        println!("Waiting for result");
-        match rx.recv_deadline(Instant::now() + Duration::from_millis(400)) {
-            Ok(result) => assert_eq!(payload, result),
-            Err(_) => panic!("should die")
+    println!("Waiting for result");
+    match rx.recv_deadline(Instant::now() + Duration::from_millis(5000)) {
+        Ok(result) => assert_eq!(payload, result),
+        Err(_) => {
+            processor.stop().unwrap();
+            panic!("Timedout out waiting for response")
         }
-
-    });
-    println!("finishing");
-
-
+    }
 }
