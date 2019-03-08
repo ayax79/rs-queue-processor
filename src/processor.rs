@@ -68,8 +68,10 @@ impl Processor {
 
 type ProcessorFuture = dyn Future<Item = (), Error = ()> + Send;
 
+// Split Processor and ProcessorInner because Runtime should not be cloned
+// ProcessorInner is cloned many times throughout to provide various threads with a copy
+// of the sqs client and worker
 impl ProcessorInner {
-
 
     /// Generates a Interval Task that can be executed
     ///
