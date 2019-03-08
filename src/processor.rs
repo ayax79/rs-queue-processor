@@ -9,8 +9,6 @@ use std::time::{Duration, Instant};
 use tokio::prelude::*;
 use tokio::timer::Interval;
 use tokio::runtime::{Runtime, Builder};
-use futures::future::lazy;
-//use tokio_timer::clock::Clock;
 
 // todo: make configurable
 /// Default requeue delay in seconds
