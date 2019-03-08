@@ -19,7 +19,6 @@ use std::time::{Duration, Instant};
 use testcontainers::images::elasticmq::ElasticMQ;
 use testcontainers::{clients, Docker};
 use rs_queue_processor::processor::Processor;
-use std::thread::sleep;
 
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]

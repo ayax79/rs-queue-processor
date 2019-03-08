@@ -9,6 +9,8 @@ use std::time::{Duration, Instant};
 use tokio::prelude::*;
 use tokio::timer::Interval;
 use tokio::runtime::{Runtime, Builder};
+use futures::future::lazy;
+//use tokio_timer::clock::Clock;
 
 // todo: make configurable
 /// Default requeue delay in seconds
@@ -58,10 +60,6 @@ impl Processor {
     }
 
     pub fn start(&mut self) {
-        self.runtime.spawn(lazy(|| {
-            println!("Does this actually work?!?");
-            Ok(())
-        }));
         self.runtime.spawn(self.inner.process());
     }
 
@@ -104,9 +102,9 @@ impl ProcessorInner {
         trace!("process_messages called!");
         match await!(self.sqs_client.fetch_messages()) {
             Ok(messages) => {
-                println!("fetch messages result: {:?}", &messages);
+                debug!("fetch messages result: {:?}", &messages);
                 for message in messages {
-                    println!("process_messages: handling {:?}", &message);
+                    debug!("process_messages: handling {:?}", &message);
                     let result = await!(self.process_message(message.clone()));
                     if let Err(e) = result {
                         error!("Error processing message: {:?} error: {}", &message, &e);
