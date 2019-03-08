@@ -3,7 +3,11 @@ name = "rs-queue-processor"
 version = "0.2.1"
 authors = ["Jack Wright <jack.wright@nike.com>"]
 edition = "2018"
-
+description = """
+A library to process messages from Amazon AWS SQS 
+"""
+categories = ["asynchronous", "network-programming"]
+keywords = ["async", "non-blocking", "futures", "sqs"]
 
 [dependencies]
 tokio = {version = "0.1", features = ["async-await-preview"]}
