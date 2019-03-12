@@ -135,11 +135,7 @@ fn create_queue(client: Arc<RusotoSqsClient>, queue_name: String) -> Result<Stri
         .map_err(|e| panic!("Could not create queue {:?}", e))
 }
 
-#[test]
-fn test_success() {
-    println!("Beginning test_success");
-    let payload = Payload::new("my message", Action::Success);
-    let payload_for_spawn = payload.clone();
+fn run_scenario(payload: Payload) {
 
     let (tx, rx) = mpsc::sync_channel::<Payload>(1);
     println!("Creating Channel");
@@ -163,7 +159,7 @@ fn test_success() {
     println!("Queue successfully created: {:?}", &queue_url);
     let worker = TestWorker::new(tx);
 
-    send_message(sm_clone_sqs_client, queue_url, payload_for_spawn).unwrap();
+    send_message(sm_clone_sqs_client, queue_url, payload.clone()).unwrap();
 
     let mut processor = Processor::new(&config, Box::new(worker)).unwrap();
     processor.start();
@@ -176,4 +172,16 @@ fn test_success() {
             panic!("Timedout out waiting for response")
         }
     }
+}
+
+#[test]
+fn test_success() {
+    let payload = Payload::new("This message should be successful", Action::Success);
+    run_scenario(payload);
+}
+
+#[test]
+fn test_fail_delete() {
+    let payload = Payload::new("This message should fail and then be deleted", Action::FailDelete);
+    run_scenario(payload)
 }

@@ -3,6 +3,8 @@ name = "rs-queue-processor"
 version = "0.2.1"
 authors = ["Jack Wright <jack.wright@nike.com>"]
 edition = "2018"
+readme = "README.md"
+repository = "https://github.com/ayax79/rs-queue-processor"
 description = """
 A library to process messages from Amazon AWS SQS 
 """
