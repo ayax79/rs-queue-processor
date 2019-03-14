@@ -27,8 +27,7 @@ fn test_success() {
     with_processor_util(|pu| {
         let payload = Payload::new("This message should be successful", Action::Success);
         pu.send_payload(payload.clone());
-        println!("Waiting for result");
-        assert_received!(pu, Duration::from_millis(5000), payload);
+        assert_received!(pu, Duration::from_secs(5), payload);
     });
 }
 
@@ -37,8 +36,16 @@ fn test_fail_delete() {
     with_processor_util(|pu| {
         let payload = Payload::new("This message should fail and then be deleted", Action::FailDelete);
         pu.send_payload(payload.clone());
-        println!("Waiting for result");
-        assert_received!(pu, Duration::from_millis(5000), payload);
+        assert_received!(pu, Duration::from_secs(5), payload);
     });
 }
 
+#[test]
+fn test_fail_requeue() {
+    with_processor_util(|pu| {
+        let payload = Payload::new("This message should fail and then be requeued", Action::FailRequeue);
+        pu.send_payload(payload.clone());
+        assert_received!(pu, Duration::from_secs(5), payload);
+        assert_received!(pu, Duration::from_secs(20), payload);
+    });
+}
