@@ -1,10 +1,10 @@
 #![feature(await_macro, async_await, futures_api, deadline_api)]
 
-extern crate rs_queue_processor;
+
 
 #[macro_use]
 extern crate serde_derive;
-extern crate serde_json;
+
 
 mod processor_util;
 
