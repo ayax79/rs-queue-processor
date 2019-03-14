@@ -1,10 +1,8 @@
 use rs_queue_processor::config::{Config, Mode};
 use rs_queue_processor::processor::Processor;
 use rusoto_core::Region;
-use rusoto_sqs::{
-    CreateQueueRequest, SendMessageRequest, Sqs, SqsClient as RusotoSqsClient,
-};
-use std::sync::mpsc::{self, SyncSender, Receiver, RecvTimeoutError};
+use rusoto_sqs::{CreateQueueRequest, SendMessageRequest, Sqs, SqsClient as RusotoSqsClient};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use testcontainers::images::elasticmq::ElasticMQ;
@@ -77,35 +75,39 @@ impl Worker for TestWorker {
     }
 }
 
-pub fn with_processor_util<F>(f: F) 
-    where F: FnOnce(ProcessorUtil) -> () 
+pub fn with_processor_util<F>(f: F)
+where
+    F: FnOnce(ProcessorUtil) -> (),
 {
-        let (tx, rx) = mpsc::sync_channel::<Payload>(1);
-        println!("Creating Channel");
+    let (tx, rx) = mpsc::sync_channel::<Payload>(1);
+    println!("Creating Channel");
 
-        let queue_name = "test-queue";
-        let docker = clients::Cli::default();
-        let node = docker.run(ElasticMQ::default());
-        let host_port = node.get_host_port(9324).unwrap();
-        let region = build_local_region(host_port);
-        let sqs_client = build_sqs_client(host_port);
+    let queue_name = "test-queue";
+    let docker = clients::Cli::default();
+    let node = docker.run(ElasticMQ::default());
+    let host_port = node.get_host_port(9324).unwrap();
+    let region = build_local_region(host_port);
+    let sqs_client = build_sqs_client(host_port);
 
-        println!("Creating queue");
+    println!("Creating queue");
 
-        let queue_url = create_queue(Arc::clone(&sqs_client), queue_name.to_owned()).unwrap();
-        let config = Config::default().with_mode(Mode::AWS(region, queue_url.to_owned()));
+    let queue_url = create_queue(Arc::clone(&sqs_client), queue_name.to_owned()).unwrap();
+    let config = Config::default().with_mode(Mode::AWS(region, queue_url.to_owned()));
 
-        println!("Queue successfully created: {:?}", &queue_url);
-        let worker = TestWorker::new(tx);
+    println!("Queue successfully created: {:?}", &queue_url);
+    let worker = TestWorker::new(tx);
 
-        let mut processor = Processor::new(&config, Box::new(worker)).unwrap();
-        processor.start();
+    let mut processor = Processor::new(&config, Box::new(worker)).unwrap();
+    processor.start();
 
-        f(ProcessorUtil::new(rx, Arc::clone(&sqs_client), queue_url.clone()));
+    f(ProcessorUtil::new(
+        rx,
+        Arc::clone(&sqs_client),
+        queue_url.clone(),
+    ));
 
-        processor.stop().unwrap();
+    processor.stop().unwrap();
 }
-
 
 pub struct ProcessorUtil {
     rx: Receiver<Payload>,
@@ -114,7 +116,6 @@ pub struct ProcessorUtil {
 }
 
 impl ProcessorUtil {
-
     fn new(rx: Receiver<Payload>, sqs_client: Arc<RusotoSqsClient>, queue_url: String) -> Self {
         ProcessorUtil {
             rx,
@@ -124,13 +125,17 @@ impl ProcessorUtil {
     }
 
     pub fn send_payload(&self, payload: Payload) {
-        send_message(Arc::clone(&self.sqs_client), self.queue_url.clone(), payload.clone()).unwrap();
+        send_message(
+            Arc::clone(&self.sqs_client),
+            self.queue_url.clone(),
+            payload.clone(),
+        )
+        .unwrap();
     }
 
     pub fn wait_for_payload(&self, duration: Duration) -> Result<Payload, RecvTimeoutError> {
         self.rx.recv_deadline(Instant::now() + duration)
     }
-
 }
 
 fn send_message(
@@ -184,6 +189,3 @@ fn build_local_region(port: u32) -> Region {
 fn build_sqs_client(port: u32) -> Arc<RusotoSqsClient> {
     Arc::new(RusotoSqsClient::new(build_local_region(port)))
 }
-
-
-
