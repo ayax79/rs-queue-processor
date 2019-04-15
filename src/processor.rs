@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 use tokio::prelude::*;
 use tokio::runtime::{Builder, Runtime};
 use tokio::timer::Interval;
+use tokio_executor::enter;
 
 // todo: make configurable
 /// Default requeue delay in seconds
@@ -54,8 +55,19 @@ impl Processor {
         Ok(Processor { inner, runtime })
     }
 
+    /// Starts the processor without blocking
     pub fn start(&mut self) {
         self.runtime.spawn(self.inner.process());
+    }
+
+    pub fn run(self) {
+        println!("Starting queue processor");
+        let mut runtime = self.runtime;
+        let mut entered = enter().expect("nested tokio::run");
+        runtime.spawn(self.inner.process());
+        entered
+            .block_on(runtime.shutdown_on_idle())
+            .expect("shutdown cannot error")
     }
 
     pub fn stop(self) -> Result<(), ()> {

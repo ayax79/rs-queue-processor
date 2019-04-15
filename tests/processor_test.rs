@@ -1,10 +1,7 @@
 #![feature(await_macro, async_await, futures_api, deadline_api)]
 
-
-
 #[macro_use]
 extern crate serde_derive;
-
 
 mod processor_util;
 

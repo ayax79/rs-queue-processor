@@ -17,8 +17,8 @@ fn main() {
     match Cli::new().build_config() {
         Ok(config) => {
             let worker = WorkerImpl::default();
-            let mut processor = Processor::new(&config, Box::new(worker)).unwrap();
-            processor.start();
+            let processor = Processor::new(&config, Box::new(worker)).unwrap();
+            processor.run();
         }
         Err(e) => {
             panic!("{}", e);
