@@ -95,7 +95,7 @@ impl ProcessorInner {
                 let clone_2 = self_clone.clone();
                 let _r = tokio::spawn_async(
                     async move {
-                        await!(clone_2.process_messages());
+                        clone_2.process_messages().await();
                     },
                 );
                 Ok(())
@@ -108,12 +108,12 @@ impl ProcessorInner {
     /// SQS to be processed
     async fn process_messages(&self) {
         trace!("process_messages called!");
-        match await!(self.sqs_client.fetch_messages()) {
+        match self.sqs_client.fetch_messages().await {
             Ok(messages) => {
                 debug!("fetch messages result: {:?}", &messages);
                 for message in messages {
                     debug!("process_messages: handling {:?}", &message);
-                    let result = await!(self.process_message(message.clone()));
+                    let result = self.process_message(message.clone()).await;
                     if let Err(e) = result {
                         error!("Error processing message: {:?} error: {}", &message, &e);
                     }
@@ -135,7 +135,7 @@ impl ProcessorInner {
         let worker = self.worker.clone();
         let worker_future = async { worker.process(message) };
 
-        if let Err(e) = await!(worker_future) {
+        if let Err(e) = worker_future.await {
             trace!("Received work error: {:?}", &e);
             await!(handle_work_error(
                 sqs_client_or_else,
