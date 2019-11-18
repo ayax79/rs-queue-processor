@@ -12,18 +12,20 @@ categories = ["asynchronous", "network-programming"]
 keywords = ["async", "non-blocking", "futures", "sqs"]
 
 [dependencies]
-tokio = "^0.1"
+tokio = { version = "^0.2.0-alpha.6" }
 # tokio = {version = "0.1", features = ["async-await-preview"]}
 # tokio-async-await = "0.1"
 #tokio-process = "0.2.3"
 #tokio-executor = "0.1"
-rusoto_core = { version = "^0.40", default_features = false, features = ["rustls"] }
-rusoto_sqs = { version = "^0.40", default_features = false, features = ["rustls"] }
-rusoto_credential = "^0.40"
-futures = "^0.1"
+futures-preview = { version = "0.3.0-alpha.17", features = ["compat"] }
+rusoto_core = { version = "^0.41", default_features = false, features = ["rustls"] }
+rusoto_sqs = { version = "^0.41", default_features = false, features = ["rustls"] }
+rusoto_credential = "^0.41"
+# futures = "^0.1"
 log = "^0.4" 
 env_logger = "^0.7"
 clap = "^2.32"
+futures-util = "^0.2"
 
 [dev-dependencies]
 testcontainers = { git = "https://github.com/testcontainers/testcontainers-rs.git" }

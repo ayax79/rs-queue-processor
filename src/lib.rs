@@ -1,11 +1,4 @@
-#![feature(await_macro, async_await, futures_api)]
-
-#[macro_use]
-extern crate log;
-
-#[macro_use]
-extern crate tokio;
-
+//#![feature(async_closure)]
 pub mod config;
 pub mod errors;
 pub mod processor;

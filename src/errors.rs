@@ -1,4 +1,5 @@
 use rusoto_core::request::HttpDispatchError as RusotoHttpDispatchError;
+use rusoto_core::RusotoError;
 use rusoto_credential::CredentialsError as RusotoCredentialsError;
 use rusoto_sqs::{DeleteMessageError, ReceiveMessageError, SendMessageError};
 use std::convert::From;
@@ -11,9 +12,9 @@ use std::sync::Arc;
 #[derive(Debug, Clone)]
 pub enum ProcessorError {
     IOError(Arc<IOError>),
-    SqsReceiveMessageError(Arc<ReceiveMessageError>),
-    SqsDeleteMessageError(Arc<DeleteMessageError>),
-    SqsSendMessageError(Arc<SendMessageError>),
+    SqsReceiveMessageError(Arc<RusotoError<ReceiveMessageError>>),
+    SqsDeleteMessageError(Arc<RusotoError<DeleteMessageError>>),
+    SqsSendMessageError(Arc<RusotoError<SendMessageError>>),
     CredentialsError(Arc<RusotoCredentialsError>),
     HttpDispatchError(Arc<RusotoHttpDispatchError>),
     CommandLineError(&'static str),
@@ -26,8 +27,8 @@ impl<'a> Display for ProcessorError {
         match self {
             ProcessorError::IOError(e) => write!(f, "An std::io::Error occurred: {}", e),
             ProcessorError::SqsReceiveMessageError(e) => match e.deref() {
-                ReceiveMessageError::Unknown(be) => {
-                    let message = String::from_utf8_lossy(be.body.as_slice());
+                RusotoError::Unknown(be) => {
+                    let message = String::from_utf8_lossy(&be.body);
                     write!(f, "Unknown Error receiving SQS message: {:#?}", message)
                 }
                 _ => write!(f, "Error receiving SQS message: {}", e),
@@ -72,8 +73,8 @@ impl From<IOError> for ProcessorError {
     }
 }
 
-impl From<ReceiveMessageError> for ProcessorError {
-    fn from(e: ReceiveMessageError) -> Self {
+impl From<RusotoError<ReceiveMessageError>> for ProcessorError {
+    fn from(e: RusotoError<ReceiveMessageError>) -> Self {
         ProcessorError::SqsReceiveMessageError(Arc::new(e))
     }
 }
@@ -90,14 +91,14 @@ impl From<RusotoHttpDispatchError> for ProcessorError {
     }
 }
 
-impl From<DeleteMessageError> for ProcessorError {
-    fn from(e: DeleteMessageError) -> Self {
+impl From<RusotoError<DeleteMessageError>> for ProcessorError {
+    fn from(e: RusotoError<DeleteMessageError>) -> Self {
         ProcessorError::SqsDeleteMessageError(Arc::new(e))
     }
 }
 
-impl From<SendMessageError> for ProcessorError {
-    fn from(e: SendMessageError) -> Self {
+impl From<RusotoError<SendMessageError>> for ProcessorError {
+    fn from(e: RusotoError<SendMessageError>) -> Self {
         ProcessorError::SqsSendMessageError(Arc::new(e))
     }
 }

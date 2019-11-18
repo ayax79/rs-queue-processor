@@ -1,4 +1,4 @@
-#![feature(await_macro, async_await, futures_api)]
+#![feature(async_await, futures_api)]
 
 #[macro_use]
 extern crate serde_derive;
@@ -38,11 +38,11 @@ fn main() {
             processor.start();
 
             loop {
-                if let Err(e) = await!(send_message(
+                if let Err(e) = end_message(
                     Arc::clone(&sqs_client),
                     queue_url.clone(),
                     WorkLoad::default()
-                )) {
+                ).await {
                     eprintln!("Error sending message: {}", e)
                 }
             }
@@ -130,7 +130,8 @@ async fn send_message(
     let mut request = SendMessageRequest::default();
     request.queue_url = queue_url.to_owned();
     request.message_body = json;
-    await!(client.send_message(request).into_awaitable())
+    client.send_message(request).into_awaitable()
+        .await
         .map(|result| {
             debug!("send message result: {:?}", &result);
             ()

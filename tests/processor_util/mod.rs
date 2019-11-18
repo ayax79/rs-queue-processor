@@ -179,13 +179,13 @@ fn create_queue(client: Arc<RusotoSqsClient>, queue_name: String) -> Result<Stri
         .map_err(|e| panic!("Could not create queue {:?}", e))
 }
 
-fn build_local_region(port: u32) -> Region {
+fn build_local_region(port: u16) -> Region {
     Region::Custom {
         name: "local".to_owned(),
         endpoint: format!("http://localhost:{}", port),
     }
 }
 
-fn build_sqs_client(port: u32) -> Arc<RusotoSqsClient> {
+fn build_sqs_client(port: u16) -> Arc<RusotoSqsClient> {
     Arc::new(RusotoSqsClient::new(build_local_region(port)))
 }

@@ -2,14 +2,11 @@ use crate::config::{Config, Mode};
 use crate::errors::{ProcessorError, WorkError};
 use crate::sqs::SqsClient;
 use crate::work::Worker;
-use futures::future::Future as OldFuture;
 use rusoto_sqs::Message as SqsMessage;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::prelude::*;
-use tokio::runtime::{Builder, Runtime};
+use log::{debug, error, info, trace};
 use tokio::timer::Interval;
-use tokio_executor::enter;
 
 // todo: make configurable
 /// Default requeue delay in seconds
@@ -22,13 +19,8 @@ type ShareableWorker = dyn Worker + Send + Sync;
 /// To instantiate an instance of Processor you will need:
 /// * A configuration object.
 /// * A Worker instance that supports both Send and Sync
-pub struct Processor {
-    inner: ProcessorInner,
-    runtime: Runtime,
-}
-
 #[derive(Clone)]
-struct ProcessorInner {
+pub struct Processor {
     sqs_client: SqsClient,
     worker: Arc<ShareableWorker>,
 }
@@ -39,69 +31,40 @@ impl Processor {
         info!("Initializing rs-queue-processor: {:?}", &config.mode);
         let sqs_client = build_sqs_client(&config.mode);
 
-        let runtime = Builder::new()
-            .blocking_threads(4)
-            .core_threads(4)
-            .keep_alive(Some(Duration::from_secs(60)))
-            .name_prefix("rs-queue-processor-")
-            .stack_size(3 * 1024 * 1024)
-            .build()
-            .map_err(ProcessorError::from)?;
+        // let runtime = Builder::new()
+        //     .blocking_threads(4)
+        //     .core_threads(4)
+        //     .keep_alive(Some(Duration::from_secs(60)))
+        //     .name_prefix("rs-queue-processor-")
+        //     .stack_size(3 * 1024 * 1024)
+        //     .build()
+        //     .map_err(ProcessorError::from)?;
 
-        let inner = ProcessorInner {
+        Ok(Processor {
             sqs_client,
             worker: Arc::from(worker),
-        };
-        Ok(Processor { inner, runtime })
+        })
     }
 
-    /// Starts the processor without blocking
-    pub fn start(&mut self) {
-        self.runtime.spawn(self.inner.process());
-    }
-
-    pub fn run(self) {
-        println!("Starting queue processor");
-        let mut runtime = self.runtime;
-        let mut entered = enter().expect("nested tokio::run");
-        runtime.spawn(self.inner.process());
-        entered
-            .block_on(runtime.shutdown_on_idle())
-            .expect("shutdown cannot error")
-    }
-
-    pub fn stop(self) -> Result<(), ()> {
-        self.runtime.shutdown_now().wait()
-    }
-}
-
-type ProcessorFuture = dyn Future<Item = (), Error = ()> + Send;
-
-// Split Processor and ProcessorInner because Runtime should not be cloned
-// ProcessorInner is cloned many times throughout to provide various threads with a copy
-// of the sqs client and worker
-impl ProcessorInner {
     /// Generates a Interval Task that can be executed
     ///
     /// let processor = Processor::new(&config, worker);
     /// tokio::run(processor.process());
-    fn process(&self) -> Box<ProcessorFuture> {
+    pub async fn process(&self)  {
         trace!("process called!!");
         // Clone required for the move in for_each. Cloning SqsClient is cheap as the underlying Rusoto client is embedded in an Arc
         let self_clone = self.clone();
-        let f = Interval::new(Instant::now(), Duration::from_millis(100))
-            .for_each(move |instant| {
-                trace!("Timer task is starting: instant {:?}", &instant);
-                let clone_2 = self_clone.clone();
-                let _r = tokio::spawn_async(
-                    async move {
-                        clone_2.process_messages().await();
-                    },
-                );
-                Ok(())
-            })
-            .map_err(|e| panic!("interval error; err={:#?}", e));
-        Box::new(f)
+        let mut interval = Interval::new(Instant::now(), Duration::from_millis(100));
+        while let Some(instant) = interval.next().await {
+            trace!("Timer task is starting: instant {:?}", &instant);
+            let clone_2 = self_clone.clone();
+            let _r = tokio::spawn(
+                async move {
+                    clone_2.process_messages().await;
+                }
+            );
+        }
+            // .map_err(|e| panic!("interval error; err={:#?}", e));
     }
 
     /// Returns a future that will fetch messages from
@@ -137,13 +100,13 @@ impl ProcessorInner {
 
         if let Err(e) = worker_future.await {
             trace!("Received work error: {:?}", &e);
-            await!(handle_work_error(
+            handle_work_error(
                 sqs_client_or_else,
                 e.clone(),
                 work_error_clone
-            ))
+            ).await
         } else {
-            await!(handle_delete(sqs_client_and_then, delete_clone))
+            handle_delete(sqs_client_and_then, delete_clone).await
         }
     }
 }
@@ -157,7 +120,7 @@ fn build_sqs_client(mode: &Mode) -> SqsClient {
 
 async fn handle_delete(sqs_client: SqsClient, message: SqsMessage) -> Result<(), ProcessorError> {
     if let Some(receipt_handle) = message.receipt_handle.clone() {
-        await!(sqs_client.delete_message(receipt_handle.as_ref()))
+        sqs_client.delete_message(receipt_handle.as_ref()).await
     } else {
         error!("No receipt id found for message: {:?}", message);
         Ok(())
@@ -165,7 +128,7 @@ async fn handle_delete(sqs_client: SqsClient, message: SqsMessage) -> Result<(),
 }
 
 async fn handle_requeue(sqs_client: SqsClient, message: SqsMessage) -> Result<(), ProcessorError> {
-    await!(sqs_client.requeue(message, DEFAULT_REQUEUE_DELAY))
+    sqs_client.requeue(message, DEFAULT_REQUEUE_DELAY).await
 }
 
 async fn handle_work_error(
@@ -177,11 +140,11 @@ async fn handle_work_error(
     match we.clone() {
         WorkError::UnRecoverableError(msg) => {
             error!("No way to recover from error: {} deleting", &msg);
-            await!(handle_delete(sqs_client, delete_clone))
+            handle_delete(sqs_client, delete_clone).await
         }
         WorkError::RecoverableError(msg) => {
             error!("Recoverable from error: {} requeing", &msg);
-            await!(handle_requeue(sqs_client, delete_clone))
+            handle_requeue(sqs_client, delete_clone).await
         }
     }
 }
