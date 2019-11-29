@@ -5,8 +5,7 @@ use crate::work::Worker;
 use log::{debug, error, info, trace};
 use rusoto_sqs::Message as SqsMessage;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
-use tokio::timer::Interval;
+use tokio::time::{self, Instant, Duration};
 
 // todo: make configurable
 /// Default requeue delay in seconds
@@ -54,15 +53,13 @@ impl Processor {
         trace!("process called!!");
         // Clone required for the move in for_each. Cloning SqsClient is cheap as the underlying Rusoto client is embedded in an Arc
         let self_clone = self.clone();
-        let mut interval = Interval::new(Instant::now(), Duration::from_millis(100));
-        while let Some(instant) = interval.next().await {
+        let mut interval = time::interval_at(Instant::now(), Duration::from_millis(100));
+        loop {
+            let instant = interval.tick().await;
             trace!("Timer task is starting: instant {:?}", &instant);
             let clone_2 = self_clone.clone();
-            let _r = tokio::spawn(async move {
-                clone_2.process_messages().await;
-            });
+            clone_2.process_messages().await;
         }
-        // .map_err(|e| panic!("interval error; err={:#?}", e));
     }
 
     /// Returns a future that will fetch messages from

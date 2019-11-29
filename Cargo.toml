@@ -12,7 +12,7 @@ categories = ["asynchronous", "network-programming"]
 keywords = ["async", "non-blocking", "futures", "sqs"]
 
 [dependencies]
-tokio = { version = "^0.2.0-alpha.6" }
+tokio = { version = "^0.2", features = ["time", "stream"] }
 # tokio = {version = "0.1", features = ["async-await-preview"]}
 # tokio-async-await = "0.1"
 #tokio-process = "0.2.3"
@@ -26,6 +26,7 @@ log = "^0.4"
 env_logger = "^0.7"
 clap = "^2.32"
 futures-util = "^0.2"
+futures-core = "^0.3"
 
 [dev-dependencies]
 testcontainers = { git = "https://github.com/testcontainers/testcontainers-rs.git" }
