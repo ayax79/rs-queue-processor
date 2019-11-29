@@ -1,5 +1,3 @@
-#![feature(async_await, futures_api)]
-
 #[macro_use]
 extern crate serde_derive;
 
@@ -8,6 +6,7 @@ extern crate log;
 
 use chrono::{DateTime, Utc};
 use env_logger;
+use futures::compat::Future01CompatExt;
 use rs_queue_processor::config::{Cli, Mode};
 use rs_queue_processor::errors::WorkError;
 use rs_queue_processor::processor::Processor;
@@ -18,11 +17,11 @@ use rusoto_sqs::{SendMessageError, SendMessageRequest, Sqs, SqsClient as RusotoS
 use std::default::Default;
 use std::str::FromStr;
 use std::sync::Arc;
-use tokio_async_await::compat::forward::IntoAwaitable;
-use tokio_executor::enter;
+use tokio::{self, main};
 use uuid::Uuid;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     env_logger::init();
     let config = Cli::new().build_config().unwrap();
     let worker = WorkerImpl::default();
@@ -32,22 +31,22 @@ fn main() {
         panic!("Could not create an sqs client");
     };
 
-    tokio::run_async(
-        async move {
-            let mut processor = Processor::new(&config, Box::new(worker)).unwrap();
-            processor.start();
+    tokio::spawn(async move {
+        let mut processor = Processor::new(&config, Box::new(worker)).unwrap();
+        processor.process().await;
+    });
 
-            loop {
-                if let Err(e) = end_message(
-                    Arc::clone(&sqs_client),
-                    queue_url.clone(),
-                    WorkLoad::default()
-                ).await {
-                    eprintln!("Error sending message: {}", e)
-                }
-            }
-        },
-    );
+    loop {
+        if let Err(e) = send_message(
+            Arc::clone(&sqs_client),
+            queue_url.clone(),
+            WorkLoad::default(),
+        )
+        .await
+        {
+            eprintln!("Error sending message: {}", e)
+        }
+    }
 }
 
 #[derive(Clone, Default)]
@@ -130,7 +129,9 @@ async fn send_message(
     let mut request = SendMessageRequest::default();
     request.queue_url = queue_url.to_owned();
     request.message_body = json;
-    client.send_message(request).into_awaitable()
+    client
+        .send_message(request)
+        .compat()
         .await
         .map(|result| {
             debug!("send message result: {:?}", &result);

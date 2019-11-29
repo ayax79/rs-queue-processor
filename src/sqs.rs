@@ -1,4 +1,6 @@
 use crate::errors::ProcessorError;
+use futures::compat::Future01CompatExt;
+use log::{debug, trace};
 use rusoto_core::HttpClient;
 use rusoto_core::Region;
 use rusoto_credential::StaticProvider;
@@ -8,8 +10,6 @@ use rusoto_sqs::{
 };
 use std::convert::From;
 use std::sync::Arc;
-use log::{trace, debug};
-use futures::compat::Future01CompatExt;
 
 const SQS_LOCAL_REGION: &'static str = "sqs-local";
 
@@ -32,9 +32,7 @@ impl SqsClient {
         SqsClient::new(build_local_region(port), queue_url)
     }
 
-    pub async fn fetch_messages(
-        &self,
-    ) -> Result<Vec<SqsMessage>, ProcessorError> {
+    pub async fn fetch_messages(&self) -> Result<Vec<SqsMessage>, ProcessorError> {
         trace!("fetch_messages called");
         let mut request = ReceiveMessageRequest::default();
         request.max_number_of_messages = Some(10);
@@ -52,10 +50,7 @@ impl SqsClient {
             .map_err(ProcessorError::from)
     }
 
-    pub async fn delete_message(
-        &self,
-        receipt_handle: &str,
-    ) -> Result<(), ProcessorError> {
+    pub async fn delete_message(&self, receipt_handle: &str) -> Result<(), ProcessorError> {
         debug!("delete_message called. receipt_handle: {}", receipt_handle);
         let mut request = DeleteMessageRequest::default();
         request.queue_url = self.queue_url.clone();
@@ -113,36 +108,34 @@ fn build_local_region(port: u32) -> Region {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures::executor::block_on;
     use rusoto_sqs::{CreateQueueRequest, SendMessageRequest};
     use testcontainers::Docker;
     use testcontainers::{clients, images};
-    use futures::executor::block_on;
 
     #[test]
     fn sqs_fetch_messages() {
-        block_on(
-            async {
-                let docker = clients::Cli::default();
-                let node = docker.run(images::elasticmq::ElasticMQ::default());
-                let host_port = node.get_host_port(9324).unwrap();
-                let region = build_local_region(host_port);
-                let rusoto_sqs_client = build_sqs_client(region.clone());
-                let queue_url = create_queue(&rusoto_sqs_client, create_queue_request());
-                populate_queue(&rusoto_sqs_client, &queue_url);
+        block_on(async {
+            let docker = clients::Cli::default();
+            let node = docker.run(images::elasticmq::ElasticMQ::default());
+            let host_port = node.get_host_port(9324).unwrap();
+            let region = build_local_region(host_port.into());
+            let rusoto_sqs_client = build_sqs_client(region.clone());
+            let queue_url = create_queue(&rusoto_sqs_client, create_queue_request());
+            populate_queue(&rusoto_sqs_client, &queue_url);
 
-                let client = SqsClient::local(host_port, queue_url.as_ref());
+            let client = SqsClient::local(host_port.into(), queue_url.as_ref());
 
-                let result: Vec<SqsMessage> = client.fetch_messages().await.unwrap();
+            let result: Vec<SqsMessage> = client.fetch_messages().await.unwrap();
 
-                assert_eq!(1, result.len());
-                let our_message: &SqsMessage = result.get(0).unwrap();
-                assert_eq!("{\"text\": \"Hello\"}", our_message.body.clone().unwrap());
+            assert_eq!(1, result.len());
+            let our_message: &SqsMessage = result.get(0).unwrap();
+            assert_eq!("{\"text\": \"Hello\"}", our_message.body.clone().unwrap());
 
-                let receipt_handle = our_message.receipt_handle.clone().unwrap();
-                let result = client.delete_message(receipt_handle.as_ref()).await;
-                assert!(result.is_ok());
-            },
-        );
+            let receipt_handle = our_message.receipt_handle.clone().unwrap();
+            let result = client.delete_message(receipt_handle.as_ref()).await;
+            assert!(result.is_ok());
+        });
     }
 
     fn populate_queue(client: &RusotoSqsClient, queue_url: &str) {

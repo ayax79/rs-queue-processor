@@ -2,10 +2,10 @@ use crate::config::{Config, Mode};
 use crate::errors::{ProcessorError, WorkError};
 use crate::sqs::SqsClient;
 use crate::work::Worker;
+use log::{debug, error, info, trace};
 use rusoto_sqs::Message as SqsMessage;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use log::{debug, error, info, trace};
 use tokio::timer::Interval;
 
 // todo: make configurable
@@ -50,7 +50,7 @@ impl Processor {
     ///
     /// let processor = Processor::new(&config, worker);
     /// tokio::run(processor.process());
-    pub async fn process(&self)  {
+    pub async fn process(&self) {
         trace!("process called!!");
         // Clone required for the move in for_each. Cloning SqsClient is cheap as the underlying Rusoto client is embedded in an Arc
         let self_clone = self.clone();
@@ -58,13 +58,11 @@ impl Processor {
         while let Some(instant) = interval.next().await {
             trace!("Timer task is starting: instant {:?}", &instant);
             let clone_2 = self_clone.clone();
-            let _r = tokio::spawn(
-                async move {
-                    clone_2.process_messages().await;
-                }
-            );
+            let _r = tokio::spawn(async move {
+                clone_2.process_messages().await;
+            });
         }
-            // .map_err(|e| panic!("interval error; err={:#?}", e));
+        // .map_err(|e| panic!("interval error; err={:#?}", e));
     }
 
     /// Returns a future that will fetch messages from
@@ -100,11 +98,7 @@ impl Processor {
 
         if let Err(e) = worker_future.await {
             trace!("Received work error: {:?}", &e);
-            handle_work_error(
-                sqs_client_or_else,
-                e.clone(),
-                work_error_clone
-            ).await
+            handle_work_error(sqs_client_or_else, e.clone(), work_error_clone).await
         } else {
             handle_delete(sqs_client_and_then, delete_clone).await
         }

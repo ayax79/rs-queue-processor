@@ -11,6 +11,7 @@ use testcontainers::{clients, Docker};
 use rs_queue_processor::errors::WorkError;
 use rs_queue_processor::work::Worker;
 use rusoto_sqs::Message;
+use tokio;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 pub enum Action {
@@ -75,7 +76,7 @@ impl Worker for TestWorker {
     }
 }
 
-pub fn with_processor_util<F>(f: F)
+pub async fn with_processor_util<F>(f: F)
 where
     F: FnOnce(ProcessorUtil) -> (),
 {
@@ -97,16 +98,16 @@ where
     println!("Queue successfully created: {:?}", &queue_url);
     let worker = TestWorker::new(tx);
 
-    let mut processor = Processor::new(&config, Box::new(worker)).unwrap();
-    processor.start();
+    tokio::spawn(async move {
+        let mut processor = Processor::new(&config, Box::new(worker)).unwrap();
+        processor.process().await;
+    });
 
     f(ProcessorUtil::new(
         rx,
         Arc::clone(&sqs_client),
         queue_url.clone(),
     ));
-
-    processor.stop().unwrap();
 }
 
 pub struct ProcessorUtil {

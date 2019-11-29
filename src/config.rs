@@ -178,5 +178,4 @@ mod tests {
             cli.build_config().unwrap().mode
         )
     }
-
 }
